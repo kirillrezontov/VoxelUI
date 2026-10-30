@@ -1,0 +1,12 @@
+<Screen version="1" id="main" stylesheet="example:assets/theme.css">
+ <Vector source="example:assets/decor.svg" anchor="top-right" style="width: 600dp; height: 600dp; opacity: 0.6"/>
+ <Column id="menu" anchor="center" style="width: 540dp; gap: 18dp; padding: 24dp">
+  <Vector source="example:assets/icon.svg" style="width: 76dp; height: 76dp"/>
+  <Text value="{menu.title}" class="title"/>
+  <Text value="{menu.status}" class="subtitle" style="height: 54dp"/>
+  <Button id="play" action="example:play" class="primary" tooltip="Start a mock session">Start exploring / Играть</Button>
+  <Button id="settings" action="example:settings">Settings / Настройки</Button>
+  <Button id="quit" action="example:quit">Leave preview</Button>
+  <Text class="subtitle" value="XML + CSS + SVG · API independent rendering"/>
+ </Column>
+</Screen>

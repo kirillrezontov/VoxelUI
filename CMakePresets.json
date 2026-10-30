@@ -1,0 +1,11 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {"name":"dev","generator":"Ninja","binaryDir":"${sourceDir}/build","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug"}},
+    {"name":"release","inherits":"dev","binaryDir":"${sourceDir}/build-release","cacheVariables":{"CMAKE_BUILD_TYPE":"Release"}},
+    {"name":"asan","inherits":"dev","binaryDir":"${sourceDir}/build-asan","cacheVariables":{"VOXELUI_SANITIZERS":"ON","VOXELUI_PREVIEW_SDL":"OFF"}},
+    {"name":"windows","inherits":"dev","binaryDir":"${sourceDir}/build-windows","cacheVariables":{"CMAKE_TOOLCHAIN_FILE":"$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"}}
+  ],
+  "buildPresets":[{"name":"dev","configurePreset":"dev"},{"name":"release","configurePreset":"release"},{"name":"asan","configurePreset":"asan"}],
+  "testPresets":[{"name":"dev","configurePreset":"dev","output":{"outputOnFailure":true}},{"name":"asan","configurePreset":"asan","output":{"outputOnFailure":true}}]
+}

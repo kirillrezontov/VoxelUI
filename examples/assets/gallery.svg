@@ -1,0 +1,14 @@
+<svg viewBox="0 0 800 340">
+ <defs><linearGradient id="paint"><stop offset="0" stop-color="#6de0be"/><stop offset="1" stop-color="#719cf5"/></linearGradient><clipPath id="cut"><rect x="430" y="20" width="130" height="140"/></clipPath></defs>
+ <rect x="20" y="20" width="150" height="140" fill="url(#paint)"/>
+ <circle cx="265" cy="90" r="65" fill="#293e58" stroke="#6de0be" stroke-width="5"/>
+ <ellipse cx="380" cy="90" rx="35" ry="65" fill="#7098db" opacity="0.7"/>
+ <g clip-path="url(#cut)"><circle cx="430" cy="85" r="100" fill="url(#paint)"/></g>
+ <polygon points="620,20 700,160 550,160" fill="none" stroke="#e0c37c" stroke-width="4"/>
+ <polyline points="20,250 75,190 130,280 180,220" fill="none" stroke="#7cb9e0" stroke-width="4"/>
+ <path d="M220 260 C240 150 340 340 390 220 S460 300 490 220 Q540 160 580 260 T680 260 A45 35 20 0 1 760 260" fill="none" stroke="#6de0be" stroke-width="4"/>
+ <g transform="translate(690 60) rotate(20)"><rect width="65" height="65" fill="#dc8e8e"/></g>
+ <g id="slot" data-voxelui-slot="gallery.badge" data-x="620" data-y="290" data-width="140" data-height="30"/>
+ <image href="example:assets/landscape.png" x="20" y="300" width="140" height="30"/>
+ <filter id="unsupported-filter"/>
+</svg>

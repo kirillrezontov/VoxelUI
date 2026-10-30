@@ -1,0 +1,9 @@
+/build*/
+/out/
+*.ppm
+*.png
+!.github/**
+.idea/
+!examples/assets/*.png
+/vcpkg/
+/vcpkg_installed/

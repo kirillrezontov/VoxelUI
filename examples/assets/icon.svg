@@ -1,0 +1,5 @@
+<svg viewBox="0 0 100 100">
+ <defs><linearGradient id="gem"><stop offset="0" stop-color="#86f6d1"/><stop offset="1" stop-color="#3a7ea4"/></linearGradient></defs>
+ <path d="M50 6 L90 28 V72 L50 94 L10 72 V28 Z" fill="url(#gem)" stroke="#baffeb" stroke-width="2"/>
+ <path d="M10 28 L50 50 L90 28 M50 50 V94 M50 6 V50" fill="none" stroke="#23667b" stroke-width="2"/>
+</svg>

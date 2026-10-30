@@ -1,0 +1,14 @@
+<Screen version="1" id="inventory" stylesheet="example:assets/theme.css">
+ <Column style="padding: 28dp; width: 100%; height: 100%">
+  <Text class="title" value="Resource collection"/><Text class="subtitle" value="{inventory.status}"/>
+  <ScrollView id="inventory-scroll" style="height: 450dp; width: 100%">
+   <Grid columns="6" style="width: 100%">
+    <Repeat id="items" items="{inventory.items}" key="id">
+     <Button id="item" action="example:item" itemId="{item.id}" draggable="true" tooltip="{item.name}" style="height: 126dp; padding: 10dp">
+      <Column><Vector source="{item.icon}" style="width: 52dp; height: 52dp"/><Text value="{item.name}" style="font-size: 14dp"/><Text value="{item.quantity}" style="font-size: 12dp"/></Column>
+     </Button>
+    </Repeat>
+   </Grid>
+  </ScrollView>
+ </Column>
+</Screen>

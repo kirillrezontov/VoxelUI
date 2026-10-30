@@ -1,0 +1,8 @@
+<Screen version="1" id="hud" stylesheet="example:assets/theme.css">
+ <Image source="example:assets/landscape.png" style="width: 100%; height: 100%; image-fit: cover"/>
+ <Column anchor="top-left" class="card" style="margin: 24dp; width: 280dp"><Text value="EXPLORER"/><ProgressBar value="{player.health}" style="width: 230dp; height: 16dp"/><Text class="subtitle" value="Health · mock observable data"/></Column>
+ <Text anchor="top-right" value="12:48 · CLEAR" class="card" style="margin: 24dp"/>
+ <Text anchor="center" value="+" style="font-size: 32dp"/>
+ <Row anchor="bottom-left" class="card" style="margin: 24dp; gap: 18dp"><Text value="01 / TOOL"/><Text value="02 / MAP"/><Text value="03 / NOTES"/></Row>
+ <Text anchor="bottom-right" value="Independent runtime" style="margin: 24dp"/>
+</Screen>

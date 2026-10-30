@@ -1,0 +1,16 @@
+Screen { --surface: #192431; --accent: #6de0be; --muted: #a3b4c8; background: #0d141e; color: #eef4ff; font-family: ui:font; font-size: 18dp; }
+Column { gap: 14dp; }
+.title { font-size: 42dp; color: #ffffff; }
+.subtitle { color: var(--muted); font-size: 16dp; }
+.card { background: var(--surface); border-color: #304359; border-width: 1dp; border-radius: 12dp; padding: 20dp; }
+Button { background: #263b4b; color: #eafff7; padding: 14dp; border-radius: 8dp; min-height: 52dp; transition: 0.15s; }
+Button:hover { background: #315c61; }
+Button:focus { border-color: var(--accent); border-width: 2dp; }
+Button:active { background: #447e79; }
+Button:selected { border-color: var(--accent); border-width: 1dp; }
+Button:disabled { opacity: 0.4; }
+.primary { background: #27735f; }
+TextInput { background: #101a27; border-width: 1dp; border-color: #405b72; min-height: 48dp; }
+Slider, ProgressBar { color: var(--accent); border-radius: 6dp; }
+Toggle, Checkbox { color: var(--accent); }
+Grid { gap: 12dp; }

@@ -1,0 +1,7 @@
+{
+ "name": "voxelui",
+ "version": "0.1.0",
+ "builtin-baseline": "d186940b2f0c4e8e5b4ff804af57d2a26fbfa091",
+ "dependencies": ["libxml2", "freetype", "libpng"],
+ "features": {"preview": {"description": "SDL3 preview window", "dependencies": ["sdl3"]}}
+}
