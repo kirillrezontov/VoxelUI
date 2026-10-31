@@ -1,0 +1,39 @@
+XML parse + authored tree (1000)  1412.28 us/op (20), 2018.55 allocations/op
+Style resolution (one node)       0.86 us/op (5000), 7.00 allocations/op
+Runtime tree/style/initial layout 7900.56 us/op (10), 22975.00 allocations/op
+Full layout (1000 nodes)          351.54 us/op (20), 2002.80 allocations/op
+Unchanged frame update            0.02 us/op (500), 0.00 allocations/op
+Unrelated model update            0.27 us/op (500), 0.00 allocations/op
+Bound label update + layout       3238.77 us/op (20), 8112.80 allocations/op
+Keyed collection rotate (200)     1121.37 us/op (20), 3870.00 allocations/op
+Text layout uncached              16.69 us/op (100), 18.60 allocations/op
+Text layout cached                0.12 us/op (5000), 1.00 allocations/op
+SVG parse + flatten               20.37 us/op (100), 61.00 allocations/op
+SVG cached geometry access        0.02 us/op (10000), 0.00 allocations/op
+Cached vector command emission    0.01 us/op (10000), 0.00 allocations/op
+Draw list (1000 text nodes)       433.23 us/op (100), 26.11 allocations/op
+Pipeline unchanged (1000)         414.75 us/op (100), 26.29 allocations/op
+  nodes/op: bindings=0.00 patched=0.00 styled=0.00 measured=0.00 placed=0.00 rebuilds=0.00
+Pipeline unrelated (1000)         420.44 us/op (100), 26.01 allocations/op
+  nodes/op: bindings=0.00 patched=0.00 styled=0.00 measured=0.00 placed=0.00 rebuilds=0.00
+Pipeline one text (1000)          501.36 us/op (100), 37.02 allocations/op
+  nodes/op: bindings=0.99 patched=0.99 styled=0.00 measured=3.96 placed=993.96 rebuilds=0.00
+Pipeline progress (1000)          417.27 us/op (100), 33.00 allocations/op
+  nodes/op: bindings=1.00 patched=1.00 styled=0.00 measured=0.00 placed=0.00 rebuilds=0.00
+Pipeline pseudo state (1000)      429.65 us/op (100), 41.96 allocations/op
+  nodes/op: bindings=0.00 patched=0.00 styled=1.99 measured=0.00 placed=0.00 rebuilds=0.00
+Pipeline text resize (1000)       502.87 us/op (100), 42.83 allocations/op
+  nodes/op: bindings=1.00 patched=1.00 styled=0.00 measured=4.00 placed=1004.00 rebuilds=0.00
+Pipeline class change (1000)      513.44 us/op (100), 54.59 allocations/op
+  nodes/op: bindings=0.99 patched=0.99 styled=0.99 measured=3.96 placed=993.96 rebuilds=0.00
+Pipeline keyed rotate (200)       1201.62 us/op (100), 3892.09 allocations/op
+  nodes/op: bindings=200.00 patched=0.00 styled=202.00 measured=202.00 placed=202.00 rebuilds=1.00
+Pipeline keyed insert (200)       1219.13 us/op (100), 3931.03 allocations/op
+  nodes/op: bindings=201.00 patched=0.00 styled=203.00 measured=203.00 placed=203.00 rebuilds=1.00
+Pipeline keyed remove (200)       1225.78 us/op (100), 3878.14 allocations/op
+  nodes/op: bindings=199.00 patched=0.00 styled=201.00 measured=201.00 placed=201.00 rebuilds=1.00
+Pipeline one list item (200)      241.27 us/op (100), 661.01 allocations/op
+  nodes/op: bindings=200.00 patched=0.99 styled=2.02 measured=4.99 placed=202.00 rebuilds=0.01
+Pipeline mixed SVG/list screen    307.78 us/op (100), 432.74 allocations/op
+  nodes/op: bindings=1.00 patched=1.00 styled=0.00 measured=4.00 placed=608.00 rebuilds=0.00
+Observable checksum: 3603150
