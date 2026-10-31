@@ -31,3 +31,24 @@ Destroying the runtime during one of its callbacks is unsupported.
 The core target depends privately on libxml2, FreeType and PNG, and never on SDL,
 Vulkan or an engine. Link VoxelUI::voxelui and optionally VoxelUI::software after
 find_package(VoxelUI CONFIG REQUIRED), or add_subdirectory. See mock_host.cpp.
+
+
+Public additions in this phase: `Runtime::runtimeStats()`,
+`Runtime::invalidateMeasurement(id)`, `Runtime::unregisterSlot(name)`,
+`Components::unregisterWidget(tag)`/`revision()`, and optional diagnostic output
+for `Resources::refresh(&diagnostics)`. Existing ordinary source calls remain valid.
+`LayoutNode`/`LayoutStats` gained cache/counter fields and `computeLayout` gained
+an optional incremental argument. Consumers must rebuild: v1 identifies source
+names, not a stable binary ABI. Auto identities now use authored ordinals, so adding
+an earlier repeated item does not renumber unrelated anonymous nodes. Persisted
+host state should continue to use explicit IDs and repeat keys.
+
+Expected validation errors return diagnostics and retain the previous valid UI.
+Actions and resource-provider exceptions are converted to diagnostics/errors.
+Arbitrary widget/observer exceptions and allocation failure do not have a strong
+transactional guarantee. Providers must not reenter or mutate their resolver while
+loading. No concurrent or reentrant update/destruction is supported.
+
+A separately configured install/import smoke consumer is part of this phase's
+manual verification. See [audit](audit.md), [measurements](performance-before-after.md)
+and [GPU readiness](gpu-integration-readiness.md) for contract limits and next work.

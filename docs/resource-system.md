@@ -27,3 +27,14 @@ In-memory screens can set the theme before loading; hot reload targets resource 
 
 Providers execute trusted host code. Resource packs cannot register native code
 or actions. ZIP handling and pack manifests are outside the library.
+
+
+Provider exceptions during get are reported through its optional Diagnostics;
+`refresh(&diagnostics)` reports provider exceptions and retains cached content for
+that ID. Providers are trusted synchronous callbacks and must not mutate/reenter
+the resolver during a load. Directory canonicalization rejects ordinary symlink
+escapes, but is not an OS sandbox against a concurrently modified hostile filesystem.
+VectorCache also keys entries on the supplied resolver epoch, so a nested PNG
+replacement invalidates standalone cached SVG geometry. Runtime epochs conservatively
+invalidate all SVG/text resources; precise per-resource dependency eviction remains
+future work.

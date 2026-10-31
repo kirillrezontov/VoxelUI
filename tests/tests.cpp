@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <voxelui/runtime.hpp>
 #include <voxelui/software.hpp>
@@ -54,6 +55,30 @@ std::uint64_t hash(const std::vector<std::uint8_t> &bytes) {
         h *= 1099511628211ull;
     }
     return h;
+}
+void sameTree(const LayoutNode &a, const LayoutNode &b) {
+    check(a.node.id == b.node.id && a.node.tag == b.node.tag && a.node.text == b.node.text &&
+              a.node.attributes == b.node.attributes,
+          "Incremental node differs from fresh runtime");
+    for (auto pair : {std::pair{a.bounds, b.bounds}, std::pair{a.clip, b.clip}}) {
+        near(pair.first.x, pair.second.x);
+        near(pair.first.y, pair.second.y);
+        near(pair.first.w, pair.second.w);
+        near(pair.first.h, pair.second.h);
+    }
+    near(a.contentSize.x, b.contentSize.x);
+    near(a.contentSize.y, b.contentSize.y);
+    check(a.style == b.style, "Incremental style differs from fresh runtime");
+    check(a.children.size() == b.children.size(), "Incremental children differ");
+    for (std::size_t i = 0; i < a.children.size(); ++i)
+        sameTree(a.children[i], b.children[i]);
+}
+void samePixels(Runtime &a, Runtime &b) {
+    SoftwareRenderer left, right;
+    left.render(a.buildDrawList());
+    right.render(b.buildDrawList());
+    check(left.width() == right.width() && left.height() == right.height() && left.pixels() == right.pixels(),
+          "Incremental pixels differ from fresh runtime");
 }
 } // namespace
 int main() {
@@ -747,6 +772,485 @@ int main() {
         ui.data().set("items", Value::Array(10001, Value::Object{{"id", "duplicate"}}));
         check(!ui.loadXml(screen("<Repeat items=\"{items}\" key=\"id\"><Text/></Repeat>")),
               "Oversized collection accepted");
+    });
+    test("Localized bindings preserve tree storage and cached measurement", [] {
+        Runtime ui;
+        ui.data().set("player.health", "A");
+        ui.data().set("player.name", "Name");
+        int measured = 0;
+        ui.components().registerWidget("External", {[&](const Node &, Vec2) {
+                                                        ++measured;
+                                                        return Vec2{20, 20};
+                                                    },
+                                                    [](const auto &, auto &) {},
+                                                    {}});
+        auto xml =
+            screen("<Column><Text id=\"health\" value=\"{player.health}\"/><Text id=\"name\" "
+                   "value=\"{player.name}\"/><External id=\"external\"/><TextInput id=\"input\"/></Column>");
+        check(ui.loadXml(xml), "Localized load");
+        ui.update();
+        key(ui, Key::tab);
+        auto *root = ui.tree();
+        auto *name = ui.find("name");
+        auto *health = ui.find("health");
+        auto rebuilds = ui.runtimeStats().fullRebuilds, evaluations = ui.runtimeStats().bindingEvaluations;
+        int before = measured;
+        ui.data().set("player.health", "Longer / Здоровье");
+        ui.update();
+        check(ui.tree() == root && ui.find("name") == name && ui.find("health") == health,
+              "Computed nodes reconstructed");
+        check(ui.focusedId() == "input" && measured == before, "Unrelated state/measurement changed");
+        check(ui.runtimeStats().fullRebuilds == rebuilds &&
+                  ui.runtimeStats().bindingEvaluations == evaluations + 1,
+              "Unrelated binding evaluated");
+        check(ui.layoutStats().nodes == 3, "Measurement escaped ancestor chain");
+        ui.data().set("player", Value::Object{{"health", "B"}, {"name", "New"}});
+        ui.update();
+        check(ui.find("name")->node.attr("value") == "New", "Ancestor dependency missed");
+        ui.data().set("player.health.extra", "invalid");
+        ui.update();
+        check(ui.find("health")->node.attr("value") == "B", "Invalid descendant write changed scalar");
+    });
+    test("Progress and pseudo state avoid expansion and measurement", [] {
+        Runtime ui;
+        ui.data().set("ratio", .2);
+        ui.setStyleOverride("Button:hover {color:#ff0000}");
+        check(ui.loadXml(screen("<ProgressBar id=\"p\" value=\"{ratio}\"/><Button id=\"b\" value=\"B\"/>")),
+              "Load");
+        ui.update();
+        auto passes = ui.layoutStats().passes;
+        auto builds = ui.runtimeStats().fullRebuilds;
+        ui.data().set("ratio", .8);
+        ui.update();
+        check(ui.layoutStats().passes == passes && ui.runtimeStats().fullRebuilds == builds,
+              "Progress recomputed layout");
+        Event e;
+        e.type = EventType::pointerMove;
+        e.position = {3, ui.find("b")->bounds.y + 3};
+        ui.processEvent(e);
+        ui.update();
+        check(ui.find("b")->style.foreground == Color{255, 0, 0, 255} && ui.layoutStats().passes == passes,
+              "Pseudo paint recomputed layout or stale style");
+    });
+    test("Incremental geometry styles and pixels equal fresh recomputation", [] {
+        auto xml = screen(
+            "<Template name=\"T\"><Row style=\"width:100%;gap:3dp\"><Text id=\"text\" "
+            "value=\"{props.label}\"/>"
+            "<ProgressBar id=\"p\" value=\"{props.ratio}\" style=\"width:20%\"/></Row></Template>"
+            "<Column class=\"{klass}\" style=\"width:100%\"><Component id=\"card\" template=\"T\" "
+            "label=\"{label}\" ratio=\"{ratio}\"/>"
+            "<ScrollView style=\"width:80%;height:110dp\"><Repeat id=\"r\" items=\"{items}\" key=\"id\">"
+            "<Row><Text id=\"t\" value=\"{item.name}\"/><Vector source=\"example:assets/decor.svg\" "
+            "style=\"width:24dp;height:18dp\"/></Row>"
+            "</Repeat></ScrollView><Panel anchor=\"bottom-right\" "
+            "style=\"width:20dp;height:10dp\"/></Column>");
+        const std::string css = ".small {font-size:14dp;color:#aabbcc} .large {font-size:23dp;color:#ccbb88}";
+        auto assets = std::filesystem::path(VOXELUI_SOURCE_DIR) / "examples";
+        Runtime incremental;
+        demo::mount(incremental, assets);
+        incremental.setStyleOverride(css);
+        auto seed = [&](Runtime &ui, int i) {
+            ui.data().set("label", i % 2 ? "English / Пример с переносом" : "A");
+            ui.data().set("ratio", (i % 9) / 10.0);
+            ui.data().set("klass", i % 3 ? "small" : "large");
+            Value::Array items;
+            for (int k = 0; k < 6; ++k)
+                items.emplace_back(Value::Object{{"id", std::to_string(k)},
+                                                 {"name", k == i % 6 ? "Changed / Изменено" : "Item"}});
+            ui.data().set("items", std::move(items));
+        };
+        seed(incremental, 0);
+        check(incremental.loadXml(xml), "Incremental scene load");
+        for (int i = 1; i <= 12; ++i) {
+            FrameInfo frame;
+            frame.viewport = i % 2 ? Vec2{320, 240} : Vec2{480, 320};
+            frame.uiScale = i % 3 ? 1.f : 1.5f;
+            frame.dpiScale = i % 4 ? 1.f : 1.25f;
+            seed(incremental, i);
+            incremental.update(frame);
+            Runtime fresh;
+            demo::mount(fresh, assets);
+            fresh.setStyleOverride(css);
+            seed(fresh, i);
+            fresh.update(frame);
+            check(fresh.loadXml(xml), "Fresh scene load");
+            fresh.update(frame);
+            sameTree(*incremental.tree(), *fresh.tree());
+            samePixels(incremental, fresh);
+        }
+    });
+    test("Keyed item properties and nested template aliases patch in place", [] {
+        Runtime ui;
+        ui.data().set("items", Value::Array{Value::Object{{"id", "a"}, {"name", "First"}}});
+        auto xml = screen("<Template name=\"Inner\"><Text id=\"text\" value=\"{props.label}\"/></Template>"
+                          "<Template name=\"Outer\"><Component id=\"inner\" template=\"Inner\" "
+                          "label=\"{props.name}\"/></Template>"
+                          "<Repeat id=\"r\" items=\"{items}\" key=\"id\"><Component id=\"outer\" "
+                          "template=\"Outer\" name=\"{item.name}\"/></Repeat>");
+        check(ui.loadXml(xml), "Nested template load");
+        ui.update();
+        auto *text = ui.find("r/61/outer/inner/text");
+        check(text, "Nested text missing");
+        auto builds = ui.runtimeStats().fullRebuilds;
+        ui.data().set("items", Value::Array{Value::Object{{"id", "a"}, {"name", "Second"}}});
+        ui.update();
+        check(ui.find(text->node.id) == text && text->node.attr("value") == "Second" &&
+                  ui.runtimeStats().fullRebuilds == builds,
+              "Item update expanded tree");
+    });
+    test("Removal clears hover focus capture drag and clamps scroll", [] {
+        Runtime ui;
+        auto rows = [](int count) {
+            Value::Array v;
+            for (int i = 0; i < count; ++i)
+                v.emplace_back(Value::Object{{"id", std::to_string(i)}});
+            return v;
+        };
+        ui.data().set("items", rows(5));
+        check(ui.loadXml(screen("<ScrollView id=\"s\" style=\"height:50dp;width:100dp\"><Repeat id=\"r\" "
+                                "items=\"{items}\" key=\"id\">"
+                                "<Button id=\"b\" draggable=\"true\" tooltip=\"tip\" "
+                                "style=\"width:100dp;height:40dp\"/></Repeat></ScrollView>")),
+              "Load");
+        ui.update();
+        Event e;
+        e.type = EventType::pointerMove;
+        e.position = {3, 3};
+        ui.processEvent(e);
+        e.type = EventType::pointerDown;
+        ui.processEvent(e);
+        ui.update();
+        check(!ui.focusedId().empty(), "Focus missing");
+        ui.data().set("items", Value::Array{});
+        ui.update();
+        check(ui.focusedId().empty() && !ui.state("r/30/b"), "Removed focus retained");
+        e.type = EventType::pointerUp;
+        ui.processEvent(e);
+        ui.update();
+        check(!hasErrors(ui.diagnostics()), "Stale captured target dispatched");
+        ui.data().set("items", rows(5));
+        ui.update();
+        e.type = EventType::wheel;
+        e.delta = -100;
+        e.position = {3, 3};
+        ui.processEvent(e);
+        ui.update();
+        check(ui.state("s")->scroll.y > 0, "Scroll missing");
+        ui.data().set("items", rows(1));
+        ui.update();
+        near(ui.state("s")->scroll.y, 0);
+        near(ui.find("r/30/b")->bounds.y, 0);
+    });
+    test("Bound visibility and inherited class update hit testing", [] {
+        Runtime ui;
+        ui.data().set("visible", "true");
+        ui.data().set("class", "small");
+        ui.setStyleOverride(".small {font-size:12dp} .large {font-size:32dp}");
+        auto xml = screen("<Column class=\"{class}\"><Button id=\"b\" visible=\"{visible}\" "
+                          "value=\"Test\"/><Button id=\"next\"/></Column>");
+        check(ui.loadXml(xml), "Visibility load");
+        ui.update();
+        key(ui, Key::tab);
+        ui.data().set("class", "large");
+        ui.update();
+        near(ui.find("b")->style.fontSize, 32);
+        ui.data().set("visible", "false");
+        ui.update();
+        check(ui.focusedId().empty() && !ui.find("b")->style.visible, "Hidden focus retained");
+        check(hitTest(*ui.tree(), {2, 2})->node.id != "b", "Hidden hit region retained");
+    });
+    test("Invalid incremental values and styles retain all last good patches", [] {
+        Runtime ui;
+        ui.data().set("text", "A");
+        ui.data().set("ratio", .5);
+        ui.data().set("style", "font-size:18dp");
+        check(ui.loadXml(screen("<Text id=\"text\" value=\"{text}\" style=\"{style}\"/><Slider id=\"slider\" "
+                                "value=\"{ratio}\"/>")),
+              "Load");
+        ui.update();
+        auto *before = ui.tree();
+        ui.data().set("text", "B");
+        ui.data().set("ratio", "invalid");
+        ui.update();
+        check(ui.tree() == before && ui.find("text")->node.attr("value") == "A" &&
+                  hasErrors(ui.diagnostics()),
+              "Partial invalid update committed");
+        ui.clearDiagnostics();
+        ui.data().set("ratio", .6);
+        ui.data().set("text", "C");
+        ui.data().set("style", "unknown:5");
+        ui.update();
+        check(ui.find("text")->node.attr("value") == "A" && hasErrors(ui.diagnostics()),
+              "Bad style committed");
+        ui.clearDiagnostics();
+        ui.data().set("style", "font-size:24dp");
+        ui.data().set("text", "D");
+        ui.update();
+        check(ui.find("text")->node.attr("value") == "D" && !hasErrors(ui.diagnostics()),
+              "Valid recovery failed");
+        near(float(ui.state("slider")->value), .6f);
+    });
+    test("Typed action parameters update and action safely replaces screen", [] {
+        Runtime ui;
+        ui.data().set("count", 1);
+        int seen = 0;
+        ui.actions().registerAction(
+            "test:replace",
+            {{{"count", ValueType::number}}, "", [&](const ActionContext &c) -> std::optional<std::string> {
+                 seen = int(*c.parameters.at("count").numeric());
+                 check(ui.loadXml(screen("<Text id=\"replacement\" value=\"New\"/>")),
+                       "Action replacement load");
+                 return {};
+             }});
+        check(ui.loadXml(screen("<Button id=\"b\" action=\"test:replace\" count=\"{count}\"/>")),
+              "Action load");
+        ui.data().set("count", 7);
+        ui.update();
+        click(ui, "b");
+        check(seen == 7 && ui.find("replacement"), "Stale action value or replacement failed");
+    });
+    test("External widget unregister releases callbacks after dispatch", [] {
+        Runtime ui;
+        auto lifetime = std::make_shared<int>(0);
+        std::weak_ptr<int> weak = lifetime;
+        int calls = 0;
+        WidgetDefinition def{[lifetime](const Node &, Vec2) { return Vec2{40, 20}; },
+                             [lifetime](const auto &c, auto &l) {
+                                 l.commands.emplace_back(
+                                     DrawRectangle{c.bounds, {10, 20, 30, 255}, {}, 0, 0});
+                             },
+                             [&, lifetime](const auto &, const auto &) {
+                                 ++calls;
+                                 ui.components().unregisterWidget("External");
+                                 return true;
+                             }};
+        check(ui.components().registerWidget("External", std::move(def)), "Register external");
+        lifetime.reset();
+        check(ui.loadXml(screen("<External id=\"ext\"/>")), "External load");
+        ui.update();
+        auto draw = ui.buildDrawList();
+        Event e;
+        e.type = EventType::pointerMove;
+        e.position = {3, 3};
+        ui.processEvent(e);
+        check(calls == 1 && weak.expired() && !ui.components().get("External"),
+              "Executable callback retained");
+        ui.update();
+        near(ui.find("ext")->bounds.w, 0);
+        ui.buildDrawList();
+        SoftwareRenderer renderer;
+        ui.close();
+        renderer.render(draw);
+        check(!renderer.pixels().empty(), "External owning output lost");
+    });
+    test("Text cache keeps fractional widths and handles hostile numeric input", [] {
+        Resources resources;
+        TextSystem text(resources);
+        auto a = text.layout("A", "missing:font", 18, 30.1f, "right");
+        auto b = text.layout("A", "missing:font", 18, 30.9f, "right");
+        check(a != b && b->glyphs.front().x > a->glyphs.front().x, "Fractional alignment cache collision");
+        auto c = text.layout("A", "missing:font", std::numeric_limits<float>::max(),
+                             std::numeric_limits<float>::quiet_NaN());
+        check(std::isfinite(c->size.x), "Nonfinite text dimensions");
+        check(utf8Boundaries("A\xef\xbf\xbdБ") == std::vector<std::size_t>{0, 1, 4, 6},
+              "Replacement character split");
+    });
+    test("External bound UTF8 replacement snaps caret to a valid boundary", [] {
+        Runtime ui;
+        ui.data().set("name", "abc");
+        ui.data().set("choice", "A");
+        check(
+            ui.loadXml(screen("<TextInput id=\"t\" value=\"{name}\"/><Select id=\"s\" value=\"{choice}\"/>")),
+            "Load");
+        ui.update();
+        key(ui, Key::tab);
+        key(ui, Key::left);
+        ui.data().set("name", "ББ");
+        ui.data().set("choice", "B");
+        ui.update();
+        auto boundaries = utf8Boundaries(ui.state("t")->text);
+        check(std::ranges::find(boundaries, ui.state("t")->caret) != boundaries.end(),
+              "Caret inside UTF8 sequence");
+        check(ui.state("s")->text == "B", "Select binding stale");
+    });
+    test("Provider exceptions retain cached resource on refresh", [] {
+        Resources resources;
+        bool broken = false;
+        resources.mount([&](auto) -> std::optional<std::vector<std::uint8_t>> {
+            if (broken)
+                throw std::runtime_error("broken");
+            return std::vector<std::uint8_t>{1};
+        });
+        auto before = resources.get("test:data");
+        broken = true;
+        Diagnostics d;
+        check(!resources.refresh(&d) && hasErrors(d) && resources.get("test:data") == before,
+              "Provider exception lost resource");
+        check(!resources.get("test:new", &d), "Broken provider returned data");
+    });
+    test("Acyclic template fanout and SVG contour budgets are bounded", [] {
+        std::string body = "<Template name=\"T0\"><Text/></Template>";
+        for (int i = 1; i < 16; ++i)
+            body += "<Template name=\"T" + std::to_string(i) + "\"><Row><Component template=\"T" +
+                    std::to_string(i - 1) + "\"/><Component template=\"T" + std::to_string(i - 1) +
+                    "\"/></Row></Template>";
+        auto result = parseDocument(screen(body + "<Component template=\"T15\"/>"));
+        check(!result &&
+                  std::ranges::any_of(result.diagnostics,
+                                      [](auto &d) { return d.message.find("budget") != std::string::npos; }),
+              "Unbounded acyclic template validation");
+        Limits limits;
+        limits.geometry = 64;
+        Diagnostics d;
+        std::string path;
+        for (int i = 0; i < 8; ++i)
+            path += "M0 0 C100 0 0 100 100 100 Z ";
+        check(!parseSvg(resource("<svg viewBox=\"0 0 100 100\"><path d=\"" + path + "\"/></svg>"), d, limits),
+              "Per-contour budget bypass accepted");
+        d.clear();
+        auto tiny = parseSvg(
+            resource("<svg viewBox=\"0 0 100 100\"><path d=\"M0 0 A1e-30 1e-30 0 0 1 90 50\"/></svg>"), d);
+        check(tiny && !hasErrors(d), "Tiny finite arc failed");
+    });
+    test("Incremental payload budget rejects oversized generated content", [] {
+        Runtime ui;
+        ui.data().set("label", "A");
+        std::string body;
+        for (int i = 0; i < 20; ++i)
+            body += "<Text value=\"{label}\"/>";
+        check(ui.loadXml(screen(body)), "Budget load");
+        ui.update();
+        auto *before = ui.tree();
+        ui.data().set("label", std::string(1024 * 1024, 'x'));
+        ui.update();
+        check(ui.tree() == before && ui.tree()->children.front().node.attr("value") == "A" &&
+                  hasErrors(ui.diagnostics()),
+              "Incremental payload bypass");
+        ui.clearDiagnostics();
+        ui.data().set("label", "B");
+        ui.update();
+        check(ui.tree()->children.front().node.attr("value") == "B", "Payload recovery failed");
+    });
+    test("Empty repeats populate and keyed edits match fresh layout", [] {
+        Runtime ui;
+        auto xml = screen("<Column><Repeat id=\"r\" items=\"{items}\" key=\"id\"><Button id=\"b\" "
+                          "value=\"{item.name}\"/></Repeat>"
+                          "<Text id=\"tail\" value=\"Tail\"/></Column>");
+        check(ui.loadXml(xml), "Missing repeat load");
+        ui.update();
+        Value::Array items{Value::Object{{"id", "a"}, {"name", "Alpha"}},
+                           Value::Object{{"id", "b"}, {"name", "Beta"}}};
+        ui.data().set("items", items);
+        ui.update();
+        check(ui.find("r/61/b"), "Missing repeat failed to populate");
+        click(ui, "r/61/b");
+        std::rotate(items.begin(), items.begin() + 1, items.end());
+        ui.data().set("items", items);
+        ui.update();
+        check(ui.state("r/61/b")->selected && ui.focusedId() == "r/61/b", "Keyed reorder lost state");
+        items.insert(items.begin(), Value::Object{{"id", "c"}, {"name", "Inserted"}});
+        ui.data().set("items", items);
+        ui.update();
+        items.erase(items.begin() + 1);
+        ui.data().set("items", items);
+        ui.update();
+        Runtime fresh;
+        fresh.data().set("items", items);
+        check(fresh.loadXml(xml), "Fresh edits load");
+        fresh.update();
+        sameTree(*ui.tree(), *fresh.tree());
+        // Match the valid selected/focused state before comparing pixels.
+        click(fresh, "r/61/b");
+        samePixels(ui, fresh);
+        check(ui.find("tail"), "Unaffected tail lost");
+    });
+    test("SVG cache observes nested image revisions and owning draw snapshots", [] {
+        Runtime ui;
+        demo::mount(ui, std::filesystem::path(VOXELUI_SOURCE_DIR) / "examples");
+        auto png = ui.resources().get("example:assets/landscape.png");
+        check(bool(png), "PNG fixture");
+        std::vector<std::uint8_t> bytes = png->bytes;
+        ui.resources().mount([&](std::string_view id) -> std::optional<std::vector<std::uint8_t>> {
+            if (id == "test:image")
+                return bytes;
+            return {};
+        });
+        auto svg = resource(
+            "<svg viewBox=\"0 0 100 100\"><image href=\"test:image\" width=\"100\" height=\"100\"/></svg>");
+        VectorCache cache;
+        Diagnostics d;
+        auto before = cache.get(svg, d, &ui.resources());
+        check(bool(before), "Nested image parse");
+        ui.resources().invalidate("test:image");
+        auto after = cache.get(svg, d, &ui.resources());
+        check(after && after != before && after->shapes.front().image != before->shapes.front().image,
+              "Stale nested image cache");
+        ui.data().set("source", "example:assets/icon.svg");
+        ui.data().set("label", "A");
+        check(ui.loadXml(screen("<Vector id=\"v\" source=\"{source}\"/><Text id=\"t\" value=\"{label}\"/>")),
+              "Resource binding load");
+        auto draw = ui.buildDrawList();
+        SoftwareRenderer renderer;
+        renderer.render(draw);
+        auto pixels = renderer.pixels();
+        ui.data().set("source", "example:assets/decor.svg");
+        ui.data().set("label", "B");
+        ui.update();
+        check(ui.find("t")->node.attr("value") == "B", "Resource update missed data");
+        ui.close();
+        renderer.render(draw);
+        check(renderer.pixels() == pixels, "Old draw payload changed");
+    });
+    test("Reference renderer rejects nonfinite framebuffer scale", [] {
+        DrawList list;
+        list.logicalSize = {20, 20};
+        list.framebufferScale = std::numeric_limits<float>::quiet_NaN();
+        SoftwareRenderer renderer;
+        bool rejected = false;
+        try {
+            renderer.render(list);
+        } catch (const std::invalid_argument &) {
+            rejected = true;
+        }
+        check(rejected, "NaN framebuffer scale accepted");
+    });
+    test("Host widget intrinsic changes invalidate through public IDs", [] {
+        Runtime ui;
+        float width = 20;
+        ui.data().set("minimum", 10);
+        ui.components().registerWidget(
+            "External", {[&](const Node &n, Vec2) {
+                             return Vec2{std::max(width, float(number(n.attr("min")).value_or(0))), 20};
+                         },
+                         [](const auto &, auto &) {},
+                         {}});
+        check(ui.loadXml(screen("<External id=\"ext\" min=\"{minimum}\"/>")), "Host size load");
+        ui.update();
+        width = 80;
+        check(ui.invalidateMeasurement("ext") && !ui.invalidateMeasurement("missing"),
+              "Host invalidation ID");
+        ui.update();
+        near(ui.find("ext")->bounds.w, 80);
+        ui.data().set("minimum", 120);
+        ui.update();
+        near(ui.find("ext")->bounds.w, 120);
+    });
+    test("Rejected model changes preserve pending focus styling", [] {
+        Runtime ui;
+        ui.data().set("style", "font-size:18dp");
+        ui.data().set("text", "A");
+        ui.setStyleOverride("TextInput:focus {color:#ff0000}");
+        check(ui.loadXml(screen("<TextInput id=\"t\" value=\"{text}\" style=\"{style}\"/>")),
+              "Focus rollback load");
+        ui.update();
+        Event e;
+        e.type = EventType::keyDown;
+        e.key = Key::tab;
+        ui.processEvent(e);
+        ui.data().set("style", "invalid:3");
+        ui.update();
+        check(ui.focusedId() == "t" && ui.find("t")->style.foreground == Color{255, 0, 0, 255},
+              "Rejected data lost focus styling");
     });
     std::cout << passed << " passed, " << failures << " failed\n";
     return failures ? 1 : 0;

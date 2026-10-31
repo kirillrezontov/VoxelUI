@@ -5,6 +5,10 @@ using namespace runtime_detail;
 void Runtime::rebuild() {
     if (!document_)
         return;
+    ++runtimeStats_.fullRebuilds;
+    bindings_.clear();
+    repeats_.clear();
+    bindingIndex_.clear();
     boundValues_.clear();
     dependencies_.clear();
     std::set<std::string> live;
@@ -23,6 +27,47 @@ void Runtime::rebuild() {
         dependencies_.insert(std::string(path));
         return data_.get(path);
     };
+    BindingSource itemSource;
+    std::map<std::string, BindingSource> propSources;
+    auto sourceFor = [&](std::string_view path) -> BindingSource {
+        if (path == "item" || path.starts_with("item.")) {
+            auto source = itemSource;
+            if (path.size() > 5)
+                source.steps.emplace_back(std::string(path.substr(5)));
+            return source;
+        }
+        if (path.starts_with("props.")) {
+            auto name = path.substr(6);
+            auto dot = name.find('.');
+            auto it = propSources.find(std::string(name.substr(0, dot)));
+            if (it == propSources.end())
+                return {};
+            auto source = it->second;
+            if (dot != name.npos)
+                source.steps.emplace_back(std::string(name.substr(dot + 1)));
+            return source;
+        }
+        return {std::string(path), {}};
+    };
+    auto track = [&](std::string_view path, const std::string &id, std::string attribute) {
+        ++runtimeStats_.bindingEvaluations;
+        auto source = sourceFor(path);
+        if (!source.path.empty()) {
+            dependencies_.insert(source.path);
+            bindingIndex_[source.path].push_back(bindings_.size());
+            bindings_.push_back({std::move(source), id, std::move(attribute)});
+        }
+    };
+    // Authored ordinals, unlike generated counts, survive insertion into an earlier repeat.
+    std::map<const Node *, std::size_t> ordinals;
+    std::function<void(const Node &)> enumerate = [&](const Node &n) {
+        ordinals[&n] = ordinals.size();
+        for (auto &c : n.children)
+            enumerate(c);
+    };
+    enumerate(document_->root);
+    for (auto &[name, n] : document_->templates)
+        enumerate(n);
     expand = [&](const Node &authored, const Style *parent, std::string prefix, const Value *item,
                  const Value *props, std::size_t depth) -> std::vector<LayoutNode> {
         if (depth > limits.depth || ++count > limits.elements) {
@@ -37,17 +82,25 @@ void Runtime::rebuild() {
             if (it == document_->templates.end())
                 return {};
             Value::Object params;
+            auto savedSources = propSources;
+            std::map<std::string, BindingSource> nextSources;
             for (auto &[k, v] : authored.attributes) {
                 if (auto path = bindingPath(v)) {
                     if (auto *val = get(*path, item, props))
                         params[k] = *val;
+                    nextSources[k] = sourceFor(*path);
                 } else
                     params[k] = Value(v);
             }
             Value object(std::move(params));
             auto identity =
-                prefix + (authored.id.empty() ? "component-" + std::to_string(count) : authored.id) + "/";
-            return expand(it->second, parent, identity, item, &object, depth + 1);
+                prefix +
+                (authored.id.empty() ? "component-" + std::to_string(ordinals.at(&authored)) : authored.id) +
+                "/";
+            propSources = std::move(nextSources);
+            auto result = expand(it->second, parent, identity, item, &object, depth + 1);
+            propSources = std::move(savedSources);
+            return result;
         }
         if (authored.tag == "Repeat") {
             std::vector<LayoutNode> result;
@@ -55,6 +108,7 @@ void Runtime::rebuild() {
             auto *value = path ? get(*path, item, props) : nullptr;
             auto *array = value ? std::get_if<Value::Array>(&value->data) : nullptr;
             if (!array) {
+                repeats_.push_back({path ? sourceFor(*path) : BindingSource{}, authored.attr("key"), {}});
                 diagnostics_.push_back({Severity::warning, authored.source, authored.line, 1,
                                         "Repeat items is missing or is not an array"});
                 return result;
@@ -66,7 +120,14 @@ void Runtime::rebuild() {
             }
             std::set<std::string> keys;
             std::string identity =
-                prefix + (authored.id.empty() ? "repeat-" + std::to_string(count) : authored.id) + "/";
+                prefix +
+                (authored.id.empty() ? "repeat-" + std::to_string(ordinals.at(&authored)) : authored.id) +
+                "/";
+            auto repeatSource = path ? sourceFor(*path) : BindingSource{};
+            auto repeatIndex = repeats_.size();
+            repeats_.push_back({repeatSource, authored.attr("key"), {}});
+            auto savedItemSource = itemSource;
+            std::size_t itemIndex = 0;
             for (auto &entry : *array) {
                 auto *keyValue = property(&entry, authored.attr("key"));
                 auto key = keyValue ? keyValue->string() : std::string{};
@@ -75,6 +136,9 @@ void Runtime::rebuild() {
                                             "Repeat requires unique, nonempty scalar keys"});
                     continue;
                 }
+                repeats_[repeatIndex].keys.push_back(key);
+                itemSource = repeatSource;
+                itemSource.steps.emplace_back(itemIndex++);
                 std::string safe;
                 for (unsigned char c : key) {
                     static const char hex[] = "0123456789abcdef";
@@ -88,12 +152,17 @@ void Runtime::rebuild() {
                 if (count > limits.elements)
                     break;
             }
+            itemSource = std::move(savedItemSource);
             return result;
         }
         LayoutNode out;
-        out.node = authored;
-        out.node.children.clear();
-        out.node.id = prefix + (authored.id.empty() ? "@" + std::to_string(count) : authored.id);
+        out.node.tag = authored.tag;
+        out.node.text = authored.text;
+        out.node.source = authored.source;
+        out.node.line = authored.line;
+        out.node.attributes = authored.attributes;
+        out.node.id =
+            prefix + (authored.id.empty() ? "@" + std::to_string(ordinals.at(&authored)) : authored.id);
         if (!live.insert(out.node.id).second) {
             diagnostics_.push_back({Severity::error, authored.source, authored.line, 1,
                                     "Duplicate expanded identity: " + out.node.id});
@@ -102,6 +171,7 @@ void Runtime::rebuild() {
         auto &bound = boundValues_[out.node.id];
         for (auto &[k, v] : out.node.attributes) {
             if (auto path = bindingPath(v)) {
+                track(*path, out.node.id, k);
                 out.node.attributes["data-binding-" + k] = *path;
                 if (auto *val = get(*path, item, props)) {
                     bound[k] = *val;
@@ -116,6 +186,7 @@ void Runtime::rebuild() {
                                         "Invalid binding syntax; only property paths are supported"});
         }
         if (auto path = bindingPath(out.node.text)) {
+            track(*path, out.node.id, {});
             auto *val = get(*path, item, props);
             out.node.text = val ? val->string() : "";
         }
@@ -155,16 +226,26 @@ void Runtime::rebuild() {
             if (!expected)
                 diagnostics_.push_back({Severity::error, authored.source, authored.line, 1,
                                         "Incorrect type for bound value on " + out.node.tag});
-            if (out.node.tag == "TextInput" && state.text != value.string()) {
+            if ((out.node.tag == "TextInput" || out.node.tag == "Select") && state.text != value.string()) {
                 state.text = value.string();
-                state.caret = std::min(state.caret, state.text.size());
-                state.anchor = std::min(state.anchor, state.text.size());
+                state.composition.clear();
+                auto boundaries = utf8Boundaries(state.text);
+                auto snap = [&](std::size_t offset) {
+                    return *std::prev(std::upper_bound(boundaries.begin(), boundaries.end(),
+                                                       std::min(offset, state.text.size())));
+                };
+                state.caret = snap(state.caret);
+                state.anchor = snap(state.anchor);
             }
             if (value.numeric())
                 state.value = *value.numeric();
             if (matchesType(value, ValueType::boolean))
                 state.checked = value.truth();
         }
+        if (bound.contains("checked"))
+            state.checked = out.node.attr("checked") == "true";
+        if (bound.contains("selected"))
+            state.selected = out.node.attr("selected") == "true";
         if (out.node.tag == "TextInput")
             out.node.attributes["value"] = state.text;
         std::set<std::string> pseudo;
@@ -178,6 +259,7 @@ void Runtime::rebuild() {
             pseudo.insert("disabled");
         if (state.selected || state.checked)
             pseudo.insert("selected");
+        ++runtimeStats_.styledNodes;
         out.style = resolveStyle(out.node, parent, stylesheet_, pseudo, &diagnostics_);
         if (auto previous = previousStyles_.find(out.node.id);
             previous != previousStyles_.end() && out.style.transition > 0) {
@@ -280,7 +362,9 @@ void Runtime::rebuild() {
             for (auto &c : children)
                 out.children.push_back(std::move(c));
         }
-        return {std::move(out)};
+        std::vector<LayoutNode> result;
+        result.push_back(std::move(out));
+        return result;
     };
     auto roots = expand(document_->root, nullptr, "", nullptr, nullptr, 0);
     if (!roots.empty())
@@ -295,24 +379,11 @@ void Runtime::rebuild() {
         capture_.clear();
     if (!live.contains(hover_))
         hover_.clear();
-    if (tree_ && !focus_.empty()) {
-        std::vector<const LayoutNode *> route;
-        bool allowed = pathTo(*tree_, focus_, route);
-        for (auto *n : route)
-            allowed = allowed && n->style.visible && n->node.attr("disabled") != "true";
-        if (auto *activeModal = modal(*tree_); activeModal && !search(*activeModal, focus_))
-            allowed = false;
-        if (!allowed)
-            focus_.clear();
-    }
-    if (tree_) {
-        std::map<std::string, Vec2> scroll;
-        for (auto &[id, state] : states_)
-            scroll[id] = state.scroll;
-        float scale = std::clamp(frame_.uiScale, .25f, 4.f);
-        computeLayout(*tree_, {frame_.viewport.x / scale, frame_.viewport.y / scale}, text_, components_,
-                      scroll, stats_);
-    }
+    expandedBytes_ = generatedBytes;
+    indexTree();
+    validateInteraction();
+    layout();
+    styleDirty_.clear();
     dirty_ = false;
     dataRevision_ = data_.revision();
 }

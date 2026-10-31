@@ -30,3 +30,6 @@ ordered vertex/index batches, apply premultiplied conversion if used by the blen
 pipeline, map nested logical clips to framebuffer scissor rectangles, and retain
 payloads until GPU completion. Respect alpha, stacking and UI/DPI scales. Transforms
 can be baked into vertices or supplied as push constants. Core needs no Vulkan changes.
+
+The detailed adapter/cache/frame-completion review is in
+[gpu-integration-readiness.md](gpu-integration-readiness.md).

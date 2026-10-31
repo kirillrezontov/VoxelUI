@@ -33,6 +33,8 @@ float segmentDistance(Vec2 p, Vec2 a, Vec2 b) {
 }
 } // namespace
 void SoftwareRenderer::render(const DrawList &list) {
+    if (!std::isfinite(list.framebufferScale))
+        throw std::invalid_argument("Invalid framebuffer scale");
     float dpi = std::clamp(list.framebufferScale, .25f, 8.f);
     if (!std::isfinite(list.logicalSize.x) || !std::isfinite(list.logicalSize.y) || list.logicalSize.x <= 0 ||
         list.logicalSize.y <= 0)
@@ -66,6 +68,8 @@ void SoftwareRenderer::render(const DrawList &list) {
         auto bound = intersect(mapped(rect, matrix), clips.back());
         if (!std::isfinite(bound.x) || !std::isfinite(bound.y) || !std::isfinite(bound.w) ||
             !std::isfinite(bound.h))
+            return;
+        if (bound.w <= 0 || bound.h <= 0)
             return;
         int x0 = std::max(0, int(std::floor(bound.x))), y0 = std::max(0, int(std::floor(bound.y))),
             x1 = std::min(width_, int(std::ceil(bound.x + bound.w))),

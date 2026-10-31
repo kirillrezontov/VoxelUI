@@ -98,8 +98,16 @@ ResourcePtr Resources::get(std::string_view id, Diagnostics *d) {
     requested_.insert(key);
     if (auto i = cache_.find(key); i != cache_.end())
         return i->second;
-    for (auto &p : providers_)
-        if (auto b = p.load(id)) {
+    for (auto &p : providers_) {
+        std::optional<std::vector<std::uint8_t>> b;
+        try {
+            b = p.load(id);
+        } catch (...) {
+            if (d)
+                d->push_back({Severity::error, key, 1, 1, "Resource provider threw an exception"});
+            return {};
+        }
+        if (b) {
             if (b->size() > 16 * 1024 * 1024 || cacheBytes_ + b->size() > 128 * 1024 * 1024) {
                 if (d)
                     d->push_back({Severity::error, key, 1, 1, "Resource byte budget exceeded"});
@@ -110,20 +118,33 @@ ResourcePtr Resources::get(std::string_view id, Diagnostics *d) {
             cache_[key] = r;
             return r;
         }
+    }
     if (d)
         d->push_back({Severity::error, key, 1, 1, "Resource not found in mounted providers"});
     return {};
 }
-bool Resources::refresh() {
+bool Resources::refresh(Diagnostics *diagnostics) {
     bool changed = false;
     for (auto &id : requested_) {
         auto it = cache_.find(id);
         std::optional<std::vector<std::uint8_t>> bytes;
+        bool failed = false;
         for (auto &p : providers_) {
-            bytes = p.load(id);
+            try {
+                bytes = p.load(id);
+            } catch (...) {
+                if (diagnostics)
+                    diagnostics->push_back(
+                        {Severity::error, id, 1, 1,
+                         "Resource provider threw during refresh; previous resource retained"});
+                failed = true;
+                break;
+            }
             if (bytes)
                 break;
         }
+        if (failed)
+            continue;
         auto previous = it == cache_.end() ? 0 : it->second->bytes.size();
         if (!bytes || bytes->size() > 16 * 1024 * 1024 ||
             cacheBytes_ - previous + bytes->size() > 128 * 1024 * 1024) {

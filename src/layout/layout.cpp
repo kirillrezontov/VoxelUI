@@ -15,11 +15,20 @@ bool overlay(const LayoutNode &n) {
     return n.node.tag == "Stack" || n.node.tag == "Panel" || n.node.tag == "Tooltip";
 }
 Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &components,
-             LayoutStats &stats) {
+             LayoutStats &stats, bool incremental) {
+    if (incremental && !n.measureDirty && n.measuredAvailable.x == available.x &&
+        n.measuredAvailable.y == available.y) {
+        n.bounds.w = n.measuredSize.x;
+        n.bounds.h = n.measuredSize.y;
+        return n.measuredSize;
+    }
+    n.measureDirty = false;
+    n.measuredAvailable = available;
     ++stats.nodes;
     auto &s = n.style;
     if (!s.visible) {
         n.bounds.w = n.bounds.h = 0;
+        n.measuredSize = {};
         return {};
     }
     float p = s.padding + s.borderWidth;
@@ -40,8 +49,14 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
         natural = {160, 24};
     if (n.node.tag == "Toggle" || n.node.tag == "Checkbox")
         natural = {28, 28};
-    if (auto *custom = components.get(n.node.tag))
-        natural = custom->measure(n.node, inner);
+    if (auto *custom = components.get(n.node.tag)) {
+        auto definition = *custom;
+        natural = definition.measure(n.node, inner);
+        if (!std::isfinite(natural.x) || !std::isfinite(natural.y))
+            natural = {};
+        natural.x = std::clamp(natural.x, 0.f, 100000.f);
+        natural.y = std::clamp(natural.y, 0.f, 100000.f);
+    }
     int index = 0;
     int cols = std::clamp(s.columns, 1, 1000);
     if (auto v = number(n.node.attr("columns")))
@@ -52,7 +67,7 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
         auto size = measure(
             c,
             {n.node.tag == "Grid" ? std::max(0.f, (inner.x - s.gap * (cols - 1)) / cols) : inner.x, inner.y},
-            text, components, stats);
+            text, components, stats, incremental);
         if (!c.style.visible || !c.style.anchor.empty())
             continue;
         float m = 2 * c.style.margin;
@@ -93,9 +108,12 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
     }
     n.bounds.w = constrained(w, s.minWidth, s.maxWidth, available.x);
     n.bounds.h = constrained(h, s.minHeight, s.maxHeight, available.y);
-    return {n.bounds.w, n.bounds.h};
+    n.measuredSize = {n.bounds.w, n.bounds.h};
+    return n.measuredSize;
 }
-void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2> &scroll) {
+void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2> &scroll,
+           LayoutStats &stats) {
+    ++stats.placed;
     auto &s = n.style;
     n.bounds.x = pos.x;
     n.bounds.y = pos.y;
@@ -184,16 +202,16 @@ void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2>
         }
         at.x -= offset.x;
         at.y -= offset.y;
-        place(c, at, childClip, scroll);
+        place(c, at, childClip, scroll, stats);
     }
 }
 } // namespace
 void computeLayout(LayoutNode &root, Vec2 viewport, TextSystem &text, const Components &components,
-                   const std::map<std::string, Vec2> &scroll, LayoutStats &stats) {
+                   const std::map<std::string, Vec2> &scroll, LayoutStats &stats, bool incremental) {
     ++stats.passes;
-    stats.nodes = 0;
-    measure(root, viewport, text, components, stats);
-    place(root, {0, 0}, {0, 0, viewport.x, viewport.y}, scroll);
+    stats.nodes = stats.placed = 0;
+    measure(root, viewport, text, components, stats, incremental);
+    place(root, {0, 0}, {0, 0, viewport.x, viewport.y}, scroll, stats);
 }
 const LayoutNode *hitTest(const LayoutNode &n, Vec2 p) {
     if (!n.style.visible)

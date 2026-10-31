@@ -160,8 +160,17 @@ ParseResult parseDocument(std::string_view xml, std::string source, const std::s
             validate(c, inTemplate || n.tag == "Template");
     };
     validate(doc.root, false);
+    std::size_t referenceVisits = 0;
+    bool referenceLimit = false;
     std::function<void(const Node &, std::set<std::string>, std::size_t)> references =
         [&](const Node &n, std::set<std::string> chain, std::size_t depth) {
+            if (referenceLimit)
+                return;
+            if (++referenceVisits > limits.elements) {
+                error(n, "Template reference validation budget exceeded");
+                referenceLimit = true;
+                return;
+            }
             if (depth > limits.depth) {
                 error(n, "Template expansion exceeds nesting limit");
                 return;

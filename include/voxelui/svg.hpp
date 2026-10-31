@@ -31,7 +31,11 @@ struct VectorDocument {
 std::shared_ptr<const VectorDocument> parseSvg(const Resource &, Diagnostics &, Limits limits = {},
                                                Resources *resources = nullptr);
 class VectorCache {
-    std::map<std::string, std::pair<std::uint64_t, std::shared_ptr<const VectorDocument>>> entries_;
+    struct Entry {
+        std::uint64_t revision{}, epoch{};
+        std::shared_ptr<const VectorDocument> document;
+    };
+    std::map<std::string, Entry> entries_;
 
   public:
     std::shared_ptr<const VectorDocument> get(const Resource &, Diagnostics &,

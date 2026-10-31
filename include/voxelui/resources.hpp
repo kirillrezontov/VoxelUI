@@ -35,7 +35,8 @@ class Resources {
     std::size_t mountDirectory(std::string nameSpace, std::filesystem::path directory, int priority = 0);
     void unmount(std::size_t token);
     ResourcePtr get(std::string_view id, Diagnostics *diagnostics = nullptr);
-    bool refresh(); // content comparison; emits a new epoch only when mounted content changes
+    bool refresh(Diagnostics *diagnostics =
+                     nullptr); // content comparison; emits a new epoch only when mounted content changes
     void invalidate(std::string_view id);
     std::uint64_t epoch() const {
         return epoch_;

@@ -114,7 +114,7 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
     char command = 0, previous = 0;
     Vec2 current{}, start{}, control{};
     std::vector<Vec2> *points = nullptr;
-    std::size_t operations = 0;
+    std::size_t operations = 0, vertices = 0;
     while (!sc.end()) {
         if (++operations > limit)
             return false;
@@ -125,8 +125,11 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
         char c = char(std::toupper(static_cast<unsigned char>(command)));
         bool relative = std::islower(static_cast<unsigned char>(command));
         if (c == 'Z') {
-            if (points && points->size() > 1)
+            if (points && points->size() > 1) {
+                if (++vertices > limit)
+                    return false;
                 points->push_back(start);
+            }
             current = start;
             command = 0;
             previous = 'Z';
@@ -148,6 +151,8 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
             return Vec2{v[i] + (relative ? current.x : 0), v[i + 1] + (relative ? current.y : 0)};
         };
         if (c == 'M') {
+            if (++vertices > limit)
+                return false;
             current = point(0);
             start = current;
             shape.contours.emplace_back();
@@ -157,6 +162,8 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
         } else {
             if (!points)
                 return false;
+            auto before = points->size();
+            auto pointLimit = before + (limit - vertices);
             Vec2 end = current;
             if (c == 'L')
                 end = point(0);
@@ -167,7 +174,7 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
             if (c == 'C') {
                 auto b = point(0), cc = point(2);
                 end = point(4);
-                curve(*points, current, b, cc, end, 0, limit);
+                curve(*points, current, b, cc, end, 0, pointLimit);
                 control = cc;
             } else if (c == 'S') {
                 Vec2 b = (previous == 'C' || previous == 'S')
@@ -175,7 +182,7 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
                              : current;
                 auto cc = point(0);
                 end = point(2);
-                curve(*points, current, b, cc, end, 0, limit);
+                curve(*points, current, b, cc, end, 0, pointLimit);
                 control = cc;
             } else if (c == 'Q' || c == 'T') {
                 Vec2 q;
@@ -190,47 +197,51 @@ bool path(std::string_view input, VectorShape &shape, std::size_t limit) {
                 }
                 curve(*points, current,
                       {current.x + (q.x - current.x) * 2 / 3, current.y + (q.y - current.y) * 2 / 3},
-                      {end.x + (q.x - end.x) * 2 / 3, end.y + (q.y - end.y) * 2 / 3}, end, 0, limit);
+                      {end.x + (q.x - end.x) * 2 / 3, end.y + (q.y - end.y) * 2 / 3}, end, 0, pointLimit);
                 control = q;
             } else if (c == 'A') {
                 end = point(5);
-                float rx = std::abs(v[0]), ry = std::abs(v[1]), angle = v[2] * pi / 180;
+                double rx = std::abs(v[0]), ry = std::abs(v[1]), angle = double(v[2]) * pi / 180;
                 if ((v[3] != 0 && v[3] != 1) || (v[4] != 0 && v[4] != 1))
                     return false;
                 if (rx == 0 || ry == 0)
                     points->push_back(end);
                 else if (current.x != end.x || current.y != end.y) {
-                    float ca = std::cos(angle), sa = std::sin(angle), dx = (current.x - end.x) * .5f,
-                          dy = (current.y - end.y) * .5f, x = ca * dx + sa * dy, y = -sa * dx + ca * dy;
-                    float scale = x * x / (rx * rx) + y * y / (ry * ry);
+                    double ca = std::cos(angle), sa = std::sin(angle), dx = (current.x - end.x) * .5f,
+                           dy = (current.y - end.y) * .5f, x = ca * dx + sa * dy, y = -sa * dx + ca * dy;
+                    double scale = x * x / (rx * rx) + y * y / (ry * ry);
                     if (scale > 1) {
                         rx *= std::sqrt(scale);
                         ry *= std::sqrt(scale);
                     }
-                    float denom = rx * rx * y * y + ry * ry * x * x;
-                    float k = (v[3] == v[4] ? -1.f : 1.f) *
-                              std::sqrt(std::max(0.f, (rx * rx * ry * ry - denom) / std::max(denom, 1e-12f)));
-                    float cx = k * rx * y / ry, cy = -k * ry * x / rx,
-                          centerX = ca * cx - sa * cy + (current.x + end.x) * .5f,
-                          centerY = sa * cx + ca * cy + (current.y + end.y) * .5f;
-                    float a = std::atan2((y - cy) / ry, (x - cx) / rx),
-                          b = std::atan2((-y - cy) / ry, (-x - cx) / rx), delta = b - a;
+                    double denom = rx * rx * y * y + ry * ry * x * x;
+                    double k =
+                        (v[3] == v[4] ? -1.f : 1.f) *
+                        std::sqrt(std::max(0.0, (rx * rx * ry * ry - denom) / std::max(denom, 1e-300)));
+                    double cx = k * rx * y / ry, cy = -k * ry * x / rx,
+                           centerX = ca * cx - sa * cy + (current.x + end.x) * .5f,
+                           centerY = sa * cx + ca * cy + (current.y + end.y) * .5f;
+                    double a = std::atan2((y - cy) / ry, (x - cx) / rx),
+                           b = std::atan2((-y - cy) / ry, (-x - cx) / rx), delta = b - a;
                     if (!v[4] && delta > 0)
                         delta -= 2 * pi;
                     if (v[4] && delta < 0)
                         delta += 2 * pi;
                     int segments = std::clamp(
-                        int(std::ceil(std::abs(delta) * std::sqrt(std::max(rx, ry) / .5f))), 1, 4096);
-                    for (int i = 1; i <= segments && points->size() < limit; ++i) {
-                        float t = a + delta * i / segments;
-                        points->push_back({centerX + ca * rx * std::cos(t) - sa * ry * std::sin(t),
-                                           centerY + sa * rx * std::cos(t) + ca * ry * std::sin(t)});
+                        int(std::clamp(std::ceil(std::abs(delta) * std::sqrt(std::max(rx, ry) / .5)), 1.0,
+                                       4096.0)),
+                        1, 4096);
+                    for (int i = 1; i <= segments && points->size() < pointLimit; ++i) {
+                        double t = a + delta * i / segments;
+                        points->push_back({float(centerX + ca * rx * std::cos(t) - sa * ry * std::sin(t)),
+                                           float(centerY + sa * rx * std::cos(t) + ca * ry * std::sin(t))});
                     }
                 }
             } else
                 points->push_back(end);
             current = end;
-            if (points->size() >= limit)
+            vertices += points->size() - before;
+            if (vertices >= limit)
                 return false;
         }
         previous = c;
@@ -483,13 +494,14 @@ std::shared_ptr<const VectorDocument> parseSvg(const Resource &r, Diagnostics &d
 std::shared_ptr<const VectorDocument> VectorCache::get(const Resource &r, Diagnostics &d,
                                                        Resources *resources) {
     auto it = entries_.find(r.id);
-    if (it != entries_.end() && it->second.first == r.revision)
-        return it->second.second;
+    if (it != entries_.end() && it->second.revision == r.revision &&
+        it->second.epoch == (resources ? resources->epoch() : 0))
+        return it->second.document;
     auto parsed = parseSvg(r, d, {}, resources);
     if (entries_.size() >= 64)
         entries_.clear();
     if (parsed)
-        entries_[r.id] = {r.revision, parsed};
+        entries_[r.id] = {r.revision, resources ? resources->epoch() : 0, parsed};
     return parsed;
 }
 } // namespace v1

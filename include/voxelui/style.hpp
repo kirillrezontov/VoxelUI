@@ -6,11 +6,13 @@ enum class Unit { automatic, dp, percent };
 struct Length {
     float value{};
     Unit unit{Unit::automatic};
+    bool operator==(const Length &) const = default;
     float resolve(float basis, float intrinsic) const {
         return unit == Unit::automatic ? intrinsic : unit == Unit::percent ? basis * value * .01f : value;
     }
 };
 struct Style {
+    bool operator==(const Style &) const = default;
     Color background{0, 0, 0, 0}, foreground{235, 237, 242, 255}, border{0, 0, 0, 0};
     float borderWidth{}, radius{}, opacity{1}, padding{}, margin{}, gap{}, fontSize{18};
     Length width, height, minWidth{0, Unit::dp}, minHeight{0, Unit::dp}, maxWidth{100000, Unit::dp},

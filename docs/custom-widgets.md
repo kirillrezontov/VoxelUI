@@ -22,3 +22,27 @@ See examples/mock_host.cpp. Registration must precede parsing. Instances use
 standard tree identity and input bubbling; host-managed state should be keyed by
 Node::id. There are no native per-instance lifecycle hooks yet. Use registered
 slots for dynamic drawings inside vector content; see svg-profile.md.
+
+
+`Components::unregisterWidget(tag)` disables future measure/draw/event dispatch.
+An already expanded instance becomes an inert custom node; explicit styles and
+children still participate in layout. A registry revision invalidates intrinsic
+measurement. Registering the tag again resumes dispatch for existing nodes. Each
+dispatch copies its function table, so self-unregistration cannot destroy the
+executing callback. Slots have matching `Runtime::unregisterSlot(name)` support;
+registration/removal updates drawing without rebuilding the screen.
+
+Measurement is cached by node and available size. When host-owned widget state
+changes intrinsic size, call `ui.invalidateMeasurement(elementId)` on the UI thread.
+Draw callbacks run when commands are requested, so pure paint-state changes need
+no layout invalidation. Context references are borrowed for the callback only.
+
+Native module unload requires host quiescence: stop routing calls, finish active
+UI callbacks, close affected screens or migrate/release host instance state,
+unregister widgets/slots/actions/providers/observers/clipboard callbacks and release
+all host copies of function tables and shared widget objects **while the module is
+still loaded**. Wait for host jobs/destructors and GPU frame resources as applicable,
+then unload. Unregister is not a wait/join barrier; a copied in-flight callback can
+still execute native code. Draw payloads containing library-owned CPU data survive
+screen/runtime destruction, but host-defined deleters/resources may retain module
+code too. VoxelUI has no plugin loader and cannot sandbox native C++.

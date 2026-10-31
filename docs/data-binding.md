@@ -6,11 +6,20 @@ Paths contain alphanumeric/underscore segments separated by periods, maximum
 256 bytes. No operators, function calls, array expressions or script evaluation.
 Host-computed values are ordinary observed properties; no separate expression engine.
 
-DataModel tracks revisions and changed paths. Relevant ancestor/descendant paths
-invalidate the computed tree; unrelated data changes do not run layout. Authored
-XML stays parsed. A relevant update currently re-expands/resolves/layouts the
-whole computed tree, with keyed state reconciliation; partial subtree layout is
-still pending. Unchanged frames reuse layout and resource/text/vector caches.
+DataModel tracks revisions and changed paths. Persistent dependency metadata maps
+model paths through Component props and Repeat item scopes to computed node IDs.
+Direct values and same-order keyed item properties patch existing nodes. Unrelated
+bindings are skipped. Class and pseudo-state updates resolve affected styles;
+measurements invalidate the changed node and ancestors and reuse clean subtrees.
+Insertion/removal/reorder and resource changes retain validated full candidate
+expansion, preserving compatible keyed state. See architecture.md for propagation
+and remaining conservative placement work. Unchanged frames reuse computed nodes,
+layout and immutable resource/text/vector caches.
+
+A rejected type/action/style/budget update retains the previous UI and pending
+changed paths until a later model revision can validate them. Runtime owns change
+acknowledgement; hosts must not call DataModel::acknowledge while it is attached
+to a runtime. Repeated writes to the same pending path are coalesced.
 
 Repeat requires an array and scalar unique keys. Missing paths/arrays yield
 warnings and safe empty content. Binding Slider/ProgressBar to nonnumbers,

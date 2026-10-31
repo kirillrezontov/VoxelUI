@@ -5,10 +5,13 @@ SPEC.md. The supported subset is documented and tested; the following work remai
 
 ## Highest priority follow-up
 
-1. **Incremental reconciliation/layout:** relevant model or pseudo-state changes
-   currently rebuild the computed tree (authored XML is retained). Stable keyed
-   identities preserve state, and unrelated updates skip layout, but subtree-level
-   dirty propagation and allocation reuse are unfinished. Benchmark before changing it.
+1. **Structural reconciliation and placement:** direct bindings, template aliases,
+   same-order keyed item properties and pseudo states now update incrementally.
+   Measurements reuse clean subtrees and propagate through affected ancestors.
+   Insert/remove/reorder and resource changes still construct a full candidate and
+   copy rollback metadata. Layout placement and ancestor aggregation remain broad;
+   draw-command generation still walks all visible nodes. See the measured counters
+   in performance-before-after.md before planning further optimizations.
 2. **Text shaping and editing:** FreeType rasterizes English/Russian codepoints.
    Full grapheme segmentation, shaping/kerning, bidi, ligatures, emoji sequences,
    word-aware wrapping and complex scripts are not implemented. Wrapping is by
@@ -23,9 +26,10 @@ SPEC.md. The supported subset is documented and tested; the following work remai
    CPU command runs are already batched.
    Vulkan is deliberately external and has not been implemented.
 4. **Platform verification:** Linux GCC Debug/Release, headless and SDL smoke tests
-   are run locally. Windows CI is provided, but no Windows result has been observed
-   here. The pinned vcpkg path is configured, not locally built. SDL real-user IME
-   behavior has not been manually tested.
+   are run locally. Baseline commit `e56a25d` has observed successful Linux/Windows
+   pinned-vcpkg and sanitizer jobs in [run 41134694094](https://github.com/kirillrezontov/VoxelUI/actions/runs/41134694094).
+   Current uncommitted changes still require Windows CI. The pinned dependency build
+   was not repeated locally. SDL real-user IME behavior has not been manually tested.
 
 ## Deliberate first-release profile
 
@@ -47,7 +51,9 @@ SPEC.md. The supported subset is documented and tested; the following work remai
   libraries. No complete sandbox for hostile native extensions is claimed.
 - Controls include a cycling Select, not a popup dropdown. Drag-and-drop emits
   source/target events; host code decides how to change application data.
-  Custom widget instance lifecycle hooks are not yet provided.
+  Custom widget instance lifecycle hooks are not yet provided. Host state must
+  invalidate cached intrinsic measurement explicitly when it changes. Unregistering
+  a factory disables future dispatch but requires host quiescence before native unload.
 - Hot reload keeps the last valid screen/assets. Initial load failures return
   diagnostics; the host chooses a recovery screen. Missing initial images display a diagnostic checkerboard; the validator still
   rejects their missing resources. Disappearing active images preserve the prior screen. In-memory screens set overrides before load; resource
@@ -64,7 +70,7 @@ SPEC.md. The supported subset is documented and tested; the following work remai
 ## Safety budgets
 
 Defaults: 4 MiB documents/import graphs; 64 nesting levels; 10,000 authored or
-generated UI nodes; 16 MiB expanded text/attribute payload; 256-byte authored IDs;
+generated UI nodes and template reference visits; 16 MiB expanded text/attribute payload; 256-byte authored IDs;
 64 attributes/node; 100,000 vertices/SVG; resources 16 MiB each,
 4096 requested IDs and 128 MiB cached bytes. Runtime image cache: 128 MiB decoded;
 vector scene cache: one million vertices and 128 MiB raster payloads. PNG decodes

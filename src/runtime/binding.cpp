@@ -17,7 +17,7 @@ std::string Value::string() const {
     return {};
 }
 std::optional<double> Value::numeric() const {
-    if (auto p = std::get_if<double>(&data))
+    if (auto p = std::get_if<double>(&data); p && std::isfinite(*p))
         return *p;
     return {};
 }
@@ -86,7 +86,8 @@ bool DataModel::set(std::string_view path, Value value) {
         path.remove_prefix(dot + 1);
     }
     ++revision_;
-    changed_.push_back(original);
+    if (std::ranges::find(changed_, original) == changed_.end())
+        changed_.push_back(std::move(original));
     return true;
 }
 bool matchesType(const Value &v, ValueType t) {
@@ -94,7 +95,7 @@ bool matchesType(const Value &v, ValueType t) {
     case ValueType::boolean:
         return std::holds_alternative<bool>(v.data);
     case ValueType::number:
-        return std::holds_alternative<double>(v.data);
+        return v.numeric().has_value();
     case ValueType::string:
         return std::holds_alternative<std::string>(v.data);
     case ValueType::object:
@@ -138,7 +139,10 @@ std::optional<std::string> Actions::invoke(const ActionContext &c) const {
 bool Components::registerWidget(std::string tag, WidgetDefinition d) {
     if (tag.empty() || builtinTag(tag) || !d.measure || !d.draw)
         return false;
-    return entries_.emplace(std::move(tag), std::move(d)).second;
+    bool added = entries_.emplace(std::move(tag), std::move(d)).second;
+    if (added)
+        ++revision_;
+    return added;
 }
 } // namespace v1
 } // namespace voxelui

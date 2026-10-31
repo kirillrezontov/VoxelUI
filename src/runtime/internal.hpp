@@ -60,6 +60,20 @@ inline const Value *property(const Value *value, std::string_view path) {
     }
     return value;
 }
+inline std::size_t payloadSize(const Node &n) {
+    std::size_t bytes = n.id.size() + n.tag.size() + n.text.size();
+    for (auto &[key, value] : n.attributes)
+        bytes += key.size() + value.size();
+    return bytes;
+}
+inline bool layoutEquivalent(const Style &a, const Style &b) {
+    return a.width == b.width && a.height == b.height && a.minWidth == b.minWidth &&
+           a.maxWidth == b.maxWidth && a.minHeight == b.minHeight && a.maxHeight == b.maxHeight &&
+           a.padding == b.padding && a.margin == b.margin && a.gap == b.gap &&
+           a.borderWidth == b.borderWidth && a.font == b.font && a.fontSize == b.fontSize &&
+           a.fontWeight == b.fontWeight && a.align == b.align && a.justify == b.justify &&
+           a.anchor == b.anchor && a.columns == b.columns && a.visible == b.visible && a.clip == b.clip;
+}
 inline Color faded(Color c, float opacity) {
     c.a = std::uint8_t(c.a * std::clamp(opacity, 0.f, 1.f));
     return c;

@@ -1,6 +1,7 @@
 #pragma once
 #include "draw_list.hpp"
 #include "events.hpp"
+#include <concepts>
 #include <functional>
 #include <set>
 namespace voxelui {
@@ -22,6 +23,7 @@ concept UiWidgetImplementation =
     };
 class Components {
     std::map<std::string, WidgetDefinition> entries_;
+    std::uint64_t revision_{};
 
   public:
     bool registerWidget(std::string tag, WidgetDefinition definition);
@@ -33,6 +35,15 @@ class Components {
     const WidgetDefinition *get(std::string_view tag) const {
         auto i = entries_.find(std::string(tag));
         return i == entries_.end() ? nullptr : &i->second;
+    }
+    bool unregisterWidget(std::string_view tag) {
+        if (!entries_.erase(std::string(tag)))
+            return false;
+        ++revision_;
+        return true;
+    }
+    std::uint64_t revision() const {
+        return revision_;
     }
     std::set<std::string> tags() const {
         std::set<std::string> s;

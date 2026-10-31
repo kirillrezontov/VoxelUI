@@ -9,7 +9,7 @@ PNG image elements with namespaced href. Native UI rectangles/text do not use SV
 Paths: M/L/H/V/C/S/Q/T/A/Z, absolute and relative, repeated arguments, exponent
 notation. Cubic/quadratic curves subdivide to 0.25 SVG user-unit flatness, depth
 12 maximum. Arcs/circles use bounded adaptive segments, maximum 4096. Geometry
-budget is 100,000 vertices. Cached geometry is retained by resource revision;
+budget is 100,000 vertices, enforced across contours during path subdivision. Cached geometry is retained by resource revision and supplied resolver epoch;
 static frames do not reparse or flatten. Large zoom can expose flattening error;
 scale-dependent retessellation and triangle mesh caching remain future work.
 

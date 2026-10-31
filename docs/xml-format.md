@@ -36,10 +36,14 @@ localized strings through the data model.
 Templates have a unique name and one root. Component passes named parameters
 as `props`. Repeat has one child and requires nonempty unique scalar keys.
 Stable expanded IDs contain the repeat ID, a hex encoded key and the child ID.
-Explicit IDs survive safe reorder/reload. Auto IDs use traversal positions and
-should not be used for state that must survive structural changes.
+Explicit IDs survive safe reorder/reload. Auto IDs now use authored ordinals rather than generated traversal counts; they
+survive list changes within one document. Continue to use explicit IDs for state
+that must survive authored-document edits.
 
 DTD/entity declarations, network resources and traversal IDs are forbidden.
 Default limits: 4 MiB XML, 10,000 authored/generated nodes, depth 64,
 64 attributes per element, 256-byte authored IDs and 16 MiB expanded payload. Parser diagnostics retain source/line; XML syntax
 errors also report libxml2's column. Semantic columns are currently 1.
+
+Template reference validation also has a total visit budget (10,000 by default),
+including acyclic fanout. Depth and cycle checks alone do not bound traversal work.

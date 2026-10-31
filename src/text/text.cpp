@@ -64,7 +64,7 @@ std::vector<std::size_t> utf8Boundaries(std::string_view text) {
         length = std::min(length, text.size() - i);
         auto decoded = decodeUtf8(text.substr(i, length));
         char32_t cp = decoded.empty() ? 0xfffd : decoded[0];
-        if (decoded.size() != 1 || cp == 0xfffd)
+        if (decoded.size() != 1)
             length = 1;
         if (i && !(cp >= 0x300 && cp <= 0x36f))
             result.push_back(i);
@@ -84,7 +84,7 @@ struct TextSystem::Impl {
     std::map<std::string, Face> faces;
     std::map<std::tuple<std::string, std::uint64_t, int, int, char32_t>, std::shared_ptr<const GlyphBitmap>>
         glyphs;
-    std::map<std::tuple<std::string, std::string, int, int, std::string, int>,
+    std::map<std::tuple<std::string, std::string, int, float, std::string, int>,
              std::shared_ptr<const TextLayout>>
         layouts;
     std::map<std::string, std::pair<std::uint64_t, bool>> validated;
@@ -223,10 +223,9 @@ std::shared_ptr<const TextLayout> TextSystem::layout(std::string_view text, std:
         impl_->epoch = impl_->resources.epoch();
     }
     text = text.substr(0, 65536);
-    int px = std::isfinite(size) ? std::clamp(int(std::round(size)), 1, 256) : 18;
-    width = std::clamp(width, 1.f, 100000.f);
-    auto key =
-        std::make_tuple(std::string(text), std::string(font), px, int(width), std::string(align), weight);
+    int px = std::isfinite(size) ? int(std::round(std::clamp(size, 1.f, 256.f))) : 18;
+    width = std::isfinite(width) ? std::clamp(width, 1.f, 100000.f) : 100000.f;
+    auto key = std::make_tuple(std::string(text), std::string(font), px, width, std::string(align), weight);
     if (auto it = impl_->layouts.find(key); it != impl_->layouts.end())
         return it->second;
     auto layout = std::make_shared<TextLayout>();

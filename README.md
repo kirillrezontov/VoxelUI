@@ -57,7 +57,9 @@ For Windows, set VCPKG_ROOT to a bootstrapped vcpkg checkout and configure with
 `cmake --preset windows`, then `cmake --build build-windows`. The manifest pins
 registry baseline `d186940b2f0c4e8e5b4ff804af57d2a26fbfa091`; add
 `-DVCPKG_MANIFEST_FEATURES=preview` for SDL3. Linux/Windows CI is included.
-**Windows and the pinned vcpkg build have not been executed locally.**
+Baseline [GitHub Actions run 41134694094](https://github.com/kirillrezontov/VoxelUI/actions/runs/41134694094)
+passed Linux/Windows pinned-vcpkg and sanitizer jobs. Current local changes still
+require Windows CI; the pinned dependency build was not repeated locally.
 
 ## Implemented features
 
@@ -65,10 +67,10 @@ registry baseline `d186940b2f0c4e8e5b4ff804af57d2a26fbfa091`; add
 |---|---|
 | XML | Version 1 tree, validation, source diagnostics, bounded parsing, templates/components, custom registered tags, DTD/entity rejection |
 | Styles/themes | Compound selectors, specificity/order, five states, inheritance, variables/imports/cycles, inline overrides, theme overrides, color/opacity transitions |
-| Layout | Rows/columns, equal-column grid, overlays, anchors, intrinsic/percent/min/max sizing, clipping, scrolling, DPI/UI scale, dirty layout |
+| Layout | Rows/columns, equal-column grid, overlays, anchors, intrinsic/percent/min/max sizing, clipping, scrolling, DPI/UI scale, cached incremental measurement, conservative placement |
 | Widgets/input | Buttons, toggles, checkboxes, sliders, single-line text input, cycling select, progress, tooltip/modal primitives, capture, focus, drag/drop events |
 | Text | UTF-8 Latin/Cyrillic, FreeType glyph/layout caches, fallback, wrapping/alignment, caret/selection, clipboard hooks, basic IME composition, synthetic bold |
-| Data/actions | Typed observable values, path bindings, explicit writes, keyed repeat state, relevant-path invalidation, typed action schemas/capabilities/errors |
+| Data/actions | Typed observable values, path bindings, explicit writes, keyed repeat state, path/props/item dependency patches, typed action schemas/capabilities/errors |
 | SVG | Shapes, M/L/H/V/C/S/Q/T/A/Z paths, transforms, fill/stroke/opacity, endpoint linear gradients, rectangular clips, resolver PNG images, cached geometry, transformed dynamic slots |
 | Resources/reload | Namespaced priority providers, memory/directory mounts, traversal protection, revisions/budgets, font/image reload, last-good recovery, missing-image checkerboard |
 | Rendering | Owning typed draw lists, ordered clip/transform stacks, compatible batch runs, deterministic software renderer, PNG output |
@@ -81,21 +83,22 @@ Mock data and host actions belong to the examples, not the core.
 
 ## Verification and continuation
 
-The Debug integration executable currently contains **38 named test cases**, including
-renders of all six examples at 960×640 and 1280×720 and a deterministic pixel-hash
-reference screenshot. See [testing](docs/testing.md) and the [execution log](docs/implementation-progress.md)
-for exact Debug/Release/sanitizer results. Final runs: Debug **4.05 s**, Release
-**0.63 s**, ASan + UBSan **28.22 s**, all passing. The SDL preview and installed-package
-consumer have also been smoke-tested on Linux. Benchmarks and measured baselines
-are in [performance](docs/performance.md); no unmeasured performance guarantee is claimed.
+The integration executable contains **57 named test cases**, including all six
+examples, interaction/lifecycle/security cases, and fresh-runtime comparisons of
+geometry, styles and software pixels after incremental changes at multiple scales.
+Debug, Release and ASan+UBSan checks, six byte-identical before/after example PNGs,
+SDL smoke tests and a separately configured installed-package host are recorded in
+[the execution log](docs/implementation-progress.md). Controlled before/after timings
+and allocation/work counts are in [the performance report](docs/performance-before-after.md).
+Architecture findings: [audit](docs/audit.md). No production-readiness claim is made.
 
 Remaining work, in recommended order:
 
-- [ ] Subtree-level reconciliation/layout and allocation reuse; relevant changes currently recompute the expanded tree while preserving keyed interaction state.
+- [ ] Region-based structural reconciliation and narrower placement; direct/template/item value updates now patch existing nodes and reuse measurements, while insert/remove/reorder still build a candidate tree.
 - [ ] Full Unicode grapheme/shaping/bidi support, word-aware wrapping, mouse selection drag and native IME candidate placement.
 - [ ] Scale-dependent SVG triangle meshes, GPU glyph atlases and backend mesh batching; general transformed clip geometry.
 - [ ] Scrollbars, focus auto-scroll, virtualized lists, popup select, widget lifecycle hooks and exhaustive external schema tooling.
-- [ ] Observe Windows CI/pinned-dependency results and run broader fuzz/soak and native IME tests.
+- [ ] Run current changes on Windows CI and broaden fuzz/soak and native IME testing.
 
 These are explicit gaps, not APIs claimed to work. Detailed layout, SVG, text,
 resource and platform limits are in [limitations](docs/limitations.md). SVG filters,
@@ -109,7 +112,8 @@ Reference: [architecture](docs/architecture.md), [XML](docs/xml-format.md),
 [styles](docs/style-language.md), [SVG/slots](docs/svg-profile.md),
 [data binding](docs/data-binding.md), [actions](docs/action-system.md),
 [custom widgets](docs/custom-widgets.md), [resources/themes](docs/resource-system.md),
-[host integration](docs/host-integration.md), [render/Vulkan contract](docs/render-backend.md).
+[host integration](docs/host-integration.md), [render contract](docs/render-backend.md),
+[GPU integration readiness](docs/gpu-integration-readiness.md).
 
 VoxelUI source is MIT licensed. The bundled font and system dependencies retain
 separate licenses: [third-party notices](docs/third-party.md),

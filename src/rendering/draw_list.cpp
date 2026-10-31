@@ -71,8 +71,9 @@ void Runtime::paint(const LayoutNode &n, DrawList &list) {
                         slotNode.id = n.node.id + "/" + slot.id;
                         slotNode.tag = "Slot";
                         list.commands.emplace_back(PushClip{slot.bounds});
-                        if (it->second.draw)
-                            it->second.draw({slotNode, slot.bounds}, list);
+                        auto definition = it->second;
+                        if (definition.draw)
+                            definition.draw({slotNode, slot.bounds}, list);
                         list.commands.emplace_back(PopClip{});
                         list.commands.emplace_back(PopTransform{});
                         list.commands.emplace_back(PopClip{});
@@ -120,8 +121,10 @@ void Runtime::paint(const LayoutNode &n, DrawList &list) {
         list.commands.emplace_back(DrawText{{content.x, y}, layout, faded(s.foreground, s.opacity)});
         list.commands.emplace_back(PopClip{});
     }
-    if (auto *custom = components_.get(n.node.tag))
-        custom->draw({n.node, b}, list);
+    if (auto *custom = components_.get(n.node.tag)) {
+        auto definition = *custom;
+        definition.draw({n.node, b}, list);
+    }
     for (auto &c : n.children)
         paint(c, list);
     if (s.clip)

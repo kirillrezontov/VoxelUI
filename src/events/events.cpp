@@ -113,21 +113,24 @@ bool Runtime::processEvent(const Event &input) {
             focus_ = std::move(id);
             notify(EventType::focusLost, old);
             notify(EventType::focusGained, focus_);
-            dirty_ = true;
+            invalidateStyle(old);
+            invalidateStyle(focus_);
         }
     };
     if (e.type == EventType::focusLost) {
         setFocus({});
         capture_.clear();
+        invalidateStyle(pressed_);
         pressed_.clear();
         return true;
     }
     if (e.type == EventType::pointerMove) {
         if (hover_ != targetId) {
+            invalidateStyle(hover_);
             notify(EventType::hoverLeave, hover_);
             hover_ = targetId;
             notify(EventType::hoverEnter, hover_);
-            dirty_ = true;
+            invalidateStyle(hover_);
         }
     }
     if (e.type == EventType::wheel) {
@@ -138,19 +141,20 @@ bool Runtime::processEvent(const Event &input) {
                 float viewport = n.bounds.h - 2 * (n.style.padding + n.style.borderWidth);
                 st.scroll.y =
                     std::clamp(st.scroll.y - e.delta * 36, 0.f, std::max(0.f, n.contentSize.y - viewport));
-                dirty_ = true;
+                layoutDirty_ = true;
                 return true;
             }
     }
     if (e.type == EventType::pointerDown && e.button == 1) {
+        invalidateStyle(pressed_);
         pressed_ = targetId;
+        invalidateStyle(pressed_);
         capture_ = targetId;
         down_ = e.position;
         if (target && focusable(*target))
             setFocus(targetId);
         else if (!m)
             setFocus({});
-        dirty_ = true;
         if (target && target->node.tag == "TextInput") {
             auto &st = states_[targetId];
             float x = e.position.x - target->bounds.x - target->style.padding;
@@ -194,6 +198,7 @@ bool Runtime::processEvent(const Event &input) {
     }
     if (e.type == EventType::pointerUp && e.button == 1) {
         auto pressed = pressed_;
+        invalidateStyle(pressed_);
         capture_.clear();
         pressed_.clear();
         if (!drag_.empty()) {
@@ -207,7 +212,6 @@ bool Runtime::processEvent(const Event &input) {
             notify(EventType::activate, targetId);
             notify(EventType::selection, targetId);
         }
-        dirty_ = true;
         return !pressed.empty() || m;
     }
     if (e.type == EventType::keyDown && e.key == Key::tab) {
@@ -249,7 +253,6 @@ bool Runtime::processEvent(const Event &input) {
             bool changed = false;
             if (e.type == EventType::composition) {
                 st.composition = e.text;
-                dirty_ = true;
                 return true;
             }
             if (e.type == EventType::textInput) {
@@ -319,7 +322,6 @@ bool Runtime::processEvent(const Event &input) {
             }
             if (changed)
                 write(*target, "value", Value(st.text));
-            dirty_ = true;
             return true;
         }
         if (e.type == EventType::keyDown && (e.key == Key::enter || e.key == Key::space)) {
@@ -339,10 +341,13 @@ bool Runtime::processEvent(const Event &input) {
         }
     }
     if (target) {
-        auto nodeCopy = *target;
-        if (auto *custom = components_.get(nodeCopy.node.tag);
-            custom && custom->event && custom->event({nodeCopy.node, nodeCopy.bounds}, e))
-            return true;
+        auto nodeCopy = target->node;
+        auto bounds = target->bounds;
+        if (auto *custom = components_.get(nodeCopy.tag); custom && custom->event) {
+            auto definition = *custom;
+            if (definition.event({nodeCopy, bounds}, e))
+                return true;
+        }
         if (eventObserver_) {
             std::vector<const LayoutNode *> route;
             pathTo(*scope, targetId, route);

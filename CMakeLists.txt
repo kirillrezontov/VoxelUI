@@ -12,7 +12,7 @@ find_package(PNG 1.6 REQUIRED)
 add_library(voxelui
   src/xml/document.cpp src/css/style.cpp src/layout/layout.cpp
   src/svg/svg.cpp src/text/text.cpp src/runtime/resources.cpp
-  src/runtime/binding.cpp src/binding/reconcile.cpp src/events/events.cpp
+  src/runtime/binding.cpp src/binding/reconcile.cpp src/binding/incremental.cpp src/events/events.cpp
   src/rendering/draw_list.cpp src/runtime/runtime.cpp)
 add_library(VoxelUI::voxelui ALIAS voxelui)
 target_include_directories(voxelui PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
@@ -54,6 +54,7 @@ if(VOXELUI_TESTS)
   add_test(NAME voxelui-tests COMMAND voxelui-tests)
   add_executable(voxelui-bench benchmarks/bench.cpp)
   target_link_libraries(voxelui-bench PRIVATE voxelui)
+  target_compile_definitions(voxelui-bench PRIVATE VOXELUI_BENCH_STATS=1)
 endif()
 include(GNUInstallDirs)
 install(TARGETS voxelui voxelui_software EXPORT VoxelUITargets)
