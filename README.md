@@ -67,13 +67,13 @@ require Windows CI; the pinned dependency build was not repeated locally.
 |---|---|
 | XML | Version 1 tree, validation, source diagnostics, bounded parsing, templates/components, custom registered tags, DTD/entity rejection |
 | Styles/themes | Compound selectors, specificity/order, five states, inheritance, variables/imports/cycles, inline overrides, theme overrides, color/opacity transitions |
-| Layout | Rows/columns, equal-column grid, overlays, anchors, intrinsic/percent/min/max sizing, clipping, scrolling, DPI/UI scale, cached incremental measurement, conservative placement |
+| Layout | Rows/columns, equal-column grid, overlays, anchors, intrinsic/percent/min/max sizing, clipping, scrolling, DPI/UI scale, cached measurement and placement with ancestor invalidation |
 | Widgets/input | Buttons, toggles, checkboxes, sliders, single-line text input, cycling select, progress, tooltip/modal primitives, capture, focus, drag/drop events |
 | Text | UTF-8 Latin/Cyrillic, FreeType glyph/layout caches, fallback, wrapping/alignment, caret/selection, clipboard hooks, basic IME composition, synthetic bold |
-| Data/actions | Typed observable values, path bindings, explicit writes, keyed repeat state, path/props/item dependency patches, typed action schemas/capabilities/errors |
+| Data/actions | Typed observable values, path bindings, explicit writes, keyed repeat state, path/props/item patches and nested keyed permutations, typed action schemas/capabilities/errors |
 | SVG | Shapes, M/L/H/V/C/S/Q/T/A/Z paths, transforms, fill/stroke/opacity, endpoint linear gradients, rectangular clips, resolver PNG images, cached geometry, transformed dynamic slots |
 | Resources/reload | Namespaced priority providers, memory/directory mounts, traversal protection, revisions/budgets, font/image reload, last-good recovery, missing-image checkerboard |
-| Rendering | Owning typed draw lists, ordered clip/transform stacks, compatible batch runs, deterministic software renderer, PNG output |
+| Rendering | Owning typed draw lists, ordered clip/transform stacks, clipped-leaf culling, straight-alpha targets, compatible batch runs, deterministic software renderer, PNG output |
 | Tools/integration | SDL3/headless preview, schema-aware validator, public-header mock host/custom widget, CMake install package, benchmarks |
 
 Examples: [main menu](examples/main_menu/main.xml), [settings](examples/settings/main.xml),
@@ -83,18 +83,20 @@ Mock data and host actions belong to the examples, not the core.
 
 ## Verification and continuation
 
-The integration executable contains **57 named test cases**, including all six
+The integration executable contains **66 named test cases**, including all six
 examples, interaction/lifecycle/security cases, and fresh-runtime comparisons of
 geometry, styles and software pixels after incremental changes at multiple scales.
 Debug, Release and ASan+UBSan checks, six byte-identical before/after example PNGs,
 SDL smoke tests and a separately configured installed-package host are recorded in
 [the execution log](docs/implementation-progress.md). Controlled before/after timings
 and allocation/work counts are in [the performance report](docs/performance-before-after.md).
+The 0.2.1 continuation adds installed-package consumer coverage and records current
+[measurements](docs/performance-before-after.md#continuation--2026-11-02).
 Architecture findings: [audit](docs/audit.md). No production-readiness claim is made.
 
 Remaining work, in recommended order:
 
-- [ ] Region-based structural reconciliation and narrower placement; direct/template/item value updates now patch existing nodes and reuse measurements, while insert/remove/reorder still build a candidate tree.
+- [ ] Region-based insertion/removal reconciliation; direct/template/item edits and nested same-key permutations reuse subtrees, and placement skips unchanged branches. Insert/remove and repeat fanout still build a candidate tree.
 - [ ] Full Unicode grapheme/shaping/bidi support, word-aware wrapping, mouse selection drag and native IME candidate placement.
 - [ ] Scale-dependent SVG triangle meshes, GPU glyph atlases and backend mesh batching; general transformed clip geometry.
 - [ ] Scrollbars, focus auto-scroll, virtualized lists, popup select, widget lifecycle hooks and exhaustive external schema tooling.

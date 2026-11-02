@@ -8,9 +8,9 @@ SPEC.md. The supported subset is documented and tested; the following work remai
 1. **Structural reconciliation and placement:** direct bindings, template aliases,
    same-order keyed item properties and pseudo states now update incrementally.
    Measurements reuse clean subtrees and propagate through affected ancestors.
-   Insert/remove/reorder and resource changes still construct a full candidate and
-   copy rollback metadata. Layout placement and ancestor aggregation remain broad;
-   draw-command generation still walks all visible nodes. See the measured counters
+   Insert/remove, unsupported repeat fanout and resource changes still construct a full candidate and
+   copy rollback metadata. Same-key permutations retain existing subtrees; placement skips unchanged subtrees, while ancestor aggregation still scans siblings;
+   paint traversal still visits the tree, while clipped built-in leaves omit text/commands. See the measured counters
    in performance-before-after.md before planning further optimizations.
 2. **Text shaping and editing:** FreeType rasterizes English/Russian codepoints.
    Full grapheme segmentation, shaping/kerning, bidi, ligatures, emoji sequences,
@@ -28,7 +28,7 @@ SPEC.md. The supported subset is documented and tested; the following work remai
 4. **Platform verification:** Linux GCC Debug/Release, headless and SDL smoke tests
    are run locally. Baseline commit `e56a25d` has observed successful Linux/Windows
    pinned-vcpkg and sanitizer jobs in [run 41134694094](https://github.com/kirillrezontov/VoxelUI/actions/runs/41134694094).
-   Current uncommitted changes still require Windows CI. The pinned dependency build
+   Current 0.2.1 changes still require Windows CI. The pinned dependency build
    was not repeated locally. SDL real-user IME behavior has not been manually tested.
 
 ## Deliberate first-release profile

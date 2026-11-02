@@ -59,6 +59,16 @@ production readiness or stable binary ABI.
    module unloading under host quiescence control. VoxelCraft integration must not
    depend on borrowed LayoutNode pointers or FreeType/Vulkan internals in core APIs.
 
-The recommended next core task is structural region reconciliation with the same
+The recommended next core task is insertion/removal region reconciliation with the same
 fresh-runtime geometry/pixel oracle. A prototype external adapter can proceed in
 parallel as host work once its rendering semantics and lifetime tests are agreed.
+
+
+0.2.1 adds `SoftwareRenderer::render(list, clearColor)` with correct straight-alpha
+transparent targets; the default opaque-black target is unchanged. DrawList/command
+equality compares values and owning immutable payload identities. A separate
+VoxelCraft reference bridge uses these contracts to cache a software surface and
+present it through the host's existing Vulkan device after its frame fence. It
+proves host input/screen/ownership integration, not native GPU mesh/atlas readiness.
+Changed surfaces still rasterize/upload synchronously; GPU timestamps are not
+claimed. The next adapter needs the native caches and conformance work above.

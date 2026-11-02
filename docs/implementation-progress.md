@@ -1,5 +1,52 @@
 # Implementation progress and handoff
 
+## Incremental runtime and host continuation — 2026-11-02
+
+Source commits `716ddf4` and `c7633ca` extend the existing 57-case implementation:
+
+- Same-key collection permutations move existing subtrees, remap nested and shared
+  collection binding sources transactionally, and reuse ID-index storage.
+- Placement caches skip clean sibling subtrees with unchanged geometry and clip;
+  ancestor measurement/placement still scans dependent siblings for correctness.
+- Paint traversal omits built-in leaves outside the actual clip stack. Overflowing
+  descendants, vectors and custom drawing remain conservative. Padded containers
+  now paint within the same content clip used by descendant hit testing.
+- Focus loss clears preedit/drag/capture, disabled pointer regions do not intercept
+  keyboard input, self-unregistering observers retain their executing closure, and
+  local Select edits keep intrinsic geometry across resource rebuilds. Preserved
+  editor/Select values count toward the expanded-payload budget.
+- Owning DrawList value equality and transparent software targets support an
+  independent host surface bridge. The package consumer exercises public-only
+  widget, action, unregister and resource-lifetime contracts. Runtime's existing
+  ownership restrictions are explicit; public structure changes require rebuilds.
+
+All 66 named cases passed after `c7633ca`: Debug 6.19 s, Release 1.01 s and
+leak-enabled GCC ASan/UBSan 38.73 s. Six example validators and reference screenshots,
+the primitive golden hash and installed-package consumer passed in this phase.
+The six reference PNGs were byte-identical after the clip/culling changes; a separate
+scaled padding regression verifies the deliberate clipping correction.
+
+The controlled five-pair benchmark endpoint is `716ddf4`, before the Select-only
+reload follow-up. Complete update-to-command medians on the same machine were
+487.26 → 65.82 µs for one text in a clipped 1000-element column, 1205.53 → 289.49 µs
+for a keyed rotation, and 287.51 → 83.71 µs for the mixed SVG/list scene. A fully
+visible 1000-label grid was 460.61 → 431.28 µs. The large clipped-column gain is
+primarily omitted command emission; traversal remains O(tree). Exact methodology,
+allocations, counters, regressions and raw runs are in
+[performance-before-after.md](performance-before-after.md).
+
+VoxelCraft's separate local `main` consumes the public source/package targets and
+the existing Vulkan device through a software-surface reference bridge. Its menu,
+connection/status/error screens and subsequent gameplay migration are host work;
+the standalone library acquires no game, SDL or Vulkan dependency. This bridge is
+not a native GPU DrawList backend. See that repository's
+`docs/vulkan-ui-integration.md` for its current scope and executed checks.
+
+Remaining work: regional insertion/removal reconciliation, ancestor aggregation,
+collection Value copies, full visible command generation, reusable GPU payload
+identifiers/adapters, shaping/Unicode segmentation, extended native IME and fuzz/soak
+testing. Current-change Windows execution is deferred, not claimed as passing.
+
 ## Architecture/performance phase — 2026-10-31
 
 The existing engine was audited and improved in place. [Audit](audit.md) records

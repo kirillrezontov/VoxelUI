@@ -1,4 +1,41 @@
-# Architecture audit — 2026-10-31
+# Architecture audit
+
+## Continuation — 2026-11-02
+
+Verified against `2e1cb61` before changes. The previous value-binding, lifetime,
+security and fresh-runtime work was already present and was re-tested. Remaining medium-severity costs were confirmed and addressed:
+
+- `src/binding/incremental.cpp`, `Runtime::patchBindings`: same-key permutations
+  previously returned to full expansion. Source-index remapping and validated
+  subtree moves now retain computed storage, item state and resources, including
+  nested repeats. Insert/remove and unsupported multi-root repeats retain fallback.
+- `src/layout/layout.cpp`, `place`: clean subtrees were placed on every leaf edit.
+  Placement caches now include final stretched bounds and incoming clip. Dirty
+  measurement/scroll paths propagate through ancestors. Changed parent geometry
+  still repositions dependent siblings; no O(depth) complexity guarantee is made.
+- `src/rendering/draw_list.cpp`, `Runtime::paint`: clipped built-in leaves still
+  performed text lookups and emitted commands. They now use the actual accumulated
+  paint clip to omit bounded work. Overflow/custom/vector drawing is preserved;
+  paint visits are still O(tree size), separately reported from emitted commands.
+- Padded clip containers painted children beyond their descendant hit-test region
+  (`Runtime::paint` versus `layout::place`). Paint now clips to the content rectangle;
+  the new scaled padding/scroll pixel regression verifies agreement.
+
+The independent VoxelCraft host exposed a dependency contract failure: it required
+a Vulkan header/target absent from this repository. The repaired host consumes the
+public core/software package and uses its existing Vulkan texture path. Core still
+has no graphics/game dependency. Transparent software targets and command equality
+were added for owning, cached surface composition. This is a reference bridge,
+not native GPU glyph/mesh rendering. `tests/consumer` verifies installed public
+widget/action/lifetime contracts without implementation headers. Additional verified
+interaction defects were fixed in `src/events/events.cpp`: disabled pointer regions
+intercepted keyboard/focus-loss events, focus changes retained preedit/drag state,
+and self-unregistered observers could destroy their executing closure. Local Select
+edits now synchronize measured value in `Runtime::write`; fresh-runtime geometry
+and pixel checks cover the change. Native unloading must also account for retained
+payload deleters, not just registration entries (custom-widgets.md).
+
+## Original phase — 2026-10-31
 
 Inspected the required sources, public headers, all documentation, CMake/CI,
 preview, validator, six examples, software backend and external mock host.
@@ -19,7 +56,7 @@ as a hypothesis. Measurements are in [the controlled report](performance-before-
 | Medium | Standalone VectorCache keyed only the SVG revision, ignoring nested image revisions; provider exceptions escaped (`src/svg/svg.cpp`, `src/runtime/resources.cpp`). | Resolver epoch participates in cache entries; provider failures become diagnostics, refresh preserves the old resource on exception. |
 | Medium, remaining | Structural insertion/removal/reorder and resource changes still expand a validated whole candidate and copy rollback maps. | Keyed IDs/state preserved; per-item value changes are incremental. Region-based structural reconciliation is the next runtime task. |
 | Medium, remaining | Measurement caches skip unaffected subtrees, but ancestor aggregation and placement can still visit many siblings (`src/layout/layout.cpp`, `measure`/`place`). | Counts report measurement and placement separately. No assertion that a leaf edit is O(depth) overall. |
-| Medium, remaining | DrawList emission remains O(visible nodes), with CPU-oriented glyph masks and flattened vector contours (`src/rendering/draw_list.cpp`, public draw/text/svg headers). | Measured in every pipeline benchmark; see GPU readiness contract. |
+| Medium, remaining | DrawList traversal remains O(tree); clipped built-in leaves omit emission, while glyph masks and flattened vector contours remain CPU-oriented (`src/rendering/draw_list.cpp`, public draw/text/svg headers). | Measured in every pipeline benchmark, including the fully visible grid; see GPU readiness contract. |
 | Low | Windows verification text was stale; tracked `.idea` files mixed project source with machine state. | Observed successful baseline CI jobs; IDE files removed from the index, local files preserved. New changes still require Windows CI. |
 
 ## Boundaries, direction and ownership
@@ -71,4 +108,5 @@ Hypotheses requiring profiling/extended testing: large unique model-path indexes
 and long-lived resource churn may make metadata/cache storage significant;
 large SVG zoom may expose fixed-flatness error; native IME and platform-specific
 font behavior need manual testing. No heap residency profile, fuzz campaign, native
-module loader or GPU execution was performed.
+module loader or standalone GPU backend was implemented or validated. The separate
+VoxelCraft host's Vulkan surface checks are recorded in its integration report.

@@ -46,3 +46,13 @@ then unload. Unregister is not a wait/join barrier; a copied in-flight callback 
 still execute native code. Draw payloads containing library-owned CPU data survive
 screen/runtime destruction, but host-defined deleters/resources may retain module
 code too. VoxelUI has no plugin loader and cannot sandbox native C++.
+
+
+Before unloading native code, quiesce dispatch and release every host copy of the
+module's widget, provider, action, observer and clipboard callbacks. Also drain
+pending work and outstanding DrawLists/backend frames that own module-created
+objects. Even an apparently data-only shared_ptr can retain a deleter/control-block
+implementation compiled into a module. Copy such outputs into host-owned payloads
+when their lifetime must outlast module code. Unregistration disables future
+registry dispatch; it neither unloads native code nor proves all executable
+references are gone. VoxelUI does not load or sandbox native modules.

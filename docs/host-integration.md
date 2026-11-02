@@ -52,3 +52,14 @@ loading. No concurrent or reentrant update/destruction is supported.
 A separately configured install/import smoke consumer is part of this phase's
 manual verification. See [audit](audit.md), [measurements](performance-before-after.md)
 and [GPU readiness](gpu-integration-readiness.md) for contract limits and next work.
+
+
+0.2.1 also exposes const model access and makes the runtime's existing noncopyable,
+nonmovable ownership explicit. Keep it in stable storage (a unique_ptr is suitable).
+Commands and geometry value types support equality; immutable payloads compare by
+shared identity. Software rendering optionally accepts a transparent clear color
+for host surface composition. Rebuild all consumers after the LayoutNode cache
+layout change; no binary ABI compatibility is promised. The install-only
+`tests/consumer` project exercises registration, measurement invalidation, action
+screen closure, unregister and command ownership against exported targets. Both
+Linux/Windows CI jobs now configure and run that consumer after installation.

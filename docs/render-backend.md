@@ -33,3 +33,17 @@ can be baked into vertices or supplied as push constants. Core needs no Vulkan c
 
 The detailed adapter/cache/frame-completion review is in
 [gpu-integration-readiness.md](gpu-integration-readiness.md).
+
+
+Runtime emission can omit built-in leaf primitives whose bounds have no overlap
+with the actual accumulated paint clip. It still traverses overflow containers and
+invokes custom widget/Vector slot drawing. Backend consumers must not infer tree
+size or element identity from command count. Standalone DrawList producers retain
+responsibility for balanced clip/transform stacks. Optional software clear colors
+support straight-alpha transparent surfaces; the default remains opaque black.
+
+
+For clipped runtime containers, child painting is clipped to the content rectangle
+inside padding and borders, matching layout and hit testing. Container background
+and border paint precede that child clip. This corrects the previous padding bleed;
+standalone PushClip command semantics are unchanged.

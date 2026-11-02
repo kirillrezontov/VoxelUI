@@ -35,6 +35,13 @@ five-run medians, full methodology, allocation counts, work counters and execute
 checks. [performance-baseline.txt](performance-baseline.txt) preserves the original
 historical measurements. Those historical figures are not the controlled baseline.
 
-Remaining costs are structural candidate expansion/rollback, broad placement and
+Remaining costs are insertion/removal candidate expansion/rollback, sibling aggregation and
 ancestor aggregation, repeated Value collection copies, and full visible DrawList
 emission. No custom allocator or shifted deferred reconciliation was introduced.
+
+
+The final 0.2.1 benchmark also reports paint visits, culled leaves and commands.
+The fully visible 40-column grid is a control with all 1000 text elements in the
+viewport. Original large-column cases contain mostly clipped leaves; emission gains
+there include omitting invisible work. The final comparison uses the same expanded
+benchmark against baseline and current libraries and retains all raw run outputs.
