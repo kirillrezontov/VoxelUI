@@ -250,8 +250,16 @@ void Runtime::rebuild() {
             state.checked = out.node.attr("checked") == "true";
         if (bound.contains("selected"))
             state.selected = out.node.attr("selected") == "true";
-        if (out.node.tag == "TextInput")
+        if (out.node.tag == "TextInput" || out.node.tag == "Select") {
+            generatedBytes -= payloadSize(out.node);
             out.node.attributes["value"] = state.text;
+            generatedBytes += payloadSize(out.node);
+            if (generatedBytes > 16 * 1024 * 1024) {
+                diagnostics_.push_back({Severity::error, authored.source, authored.line, 1,
+                                        "Expanded document payload exceeds 16 MiB"});
+                return {};
+            }
+        }
         std::set<std::string> pseudo;
         if (out.node.id == focus_)
             pseudo.insert("focus");

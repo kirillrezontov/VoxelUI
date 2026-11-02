@@ -1392,6 +1392,8 @@ int main() {
         Runtime fresh;
         check(fresh.loadXml(screen("<Row><Select id=\"select\" value=\"Longer option label\" options=\"A|Longer option label\"/><Text id=\"after\">After</Text></Row>")),"Fresh Select load");
         fresh.update();sameTree(*ui.tree(),*fresh.tree());key(fresh,Key::tab);samePixels(ui,fresh);
+        ui.resources().mount([](std::string_view)->std::optional<std::vector<std::uint8_t>> { return {}; });
+        ui.update();sameTree(*ui.tree(),*fresh.tree());samePixels(ui,fresh);
     });
     test("Clipped built-in leaves omit paint work without dropping overflow or custom drawing", [] {
         Runtime ui;
