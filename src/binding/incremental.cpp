@@ -28,10 +28,14 @@ const Value *Runtime::bindingValue(const BindingSource &source) const {
     }
     return value;
 }
-void Runtime::indexTree() {
-    nodeIndex_.clear();
+void Runtime::indexTree(bool reuseIds) {
+    if (!reuseIds)
+        nodeIndex_.clear();
     std::function<void(LayoutNode &, LayoutNode *)> visit = [&](LayoutNode &n, LayoutNode *parent) {
-        nodeIndex_[n.node.id] = {&n, parent};
+        if (reuseIds)
+            nodeIndex_.at(n.node.id) = {&n, parent};
+        else
+            nodeIndex_[n.node.id] = {&n, parent};
         for (auto &c : n.children)
             visit(c, &n);
     };
@@ -42,8 +46,17 @@ void Runtime::invalidateMeasure(LayoutNode &node) {
     auto *n = &node;
     while (n) {
         n->measureDirty = true;
+        n->placementDirty = true;
         auto it = nodeIndex_.find(n->node.id);
         n = it == nodeIndex_.end() ? nullptr : it->second.parent;
+    }
+    layoutDirty_ = true;
+}
+void Runtime::invalidatePlacement(LayoutNode &node) {
+    auto *n = &node;
+    while (n) {
+        n->placementDirty = true;
+        n = nodeIndex_.at(n->node.id).parent;
     }
     layoutDirty_ = true;
 }
@@ -92,6 +105,9 @@ void Runtime::validateInteraction() {
     for (auto *id : {&focus_, &hover_, &capture_, &pressed_, &drag_})
         if (!id->empty() && !allowed(*id)) {
             invalidateStyle(*id);
+            if (id == &focus_)
+                if (auto state = states_.find(*id); state != states_.end())
+                    state->second.composition.clear();
             id->clear();
         }
     if (capture_.empty())
@@ -103,19 +119,124 @@ bool Runtime::patchBindings() {
     auto affected = [&](const std::string &path) {
         return std::ranges::any_of(data_.changes(), [&](auto &change) { return overlaps(path, change); });
     };
-    // Item/property patches are valid while the keyed topology is unchanged.
-    for (auto &repeat : repeats_) {
+    // Stage source remapping before evaluating values. Tree order changes only
+    // after all ordinary value/action/style validation has succeeded.
+    struct MetadataTransaction {
+        std::vector<BindingTarget> &bindings;
+        std::vector<RepeatBinding> &repeats;
+        std::optional<std::vector<BindingTarget>> oldBindings;
+        std::optional<std::vector<RepeatBinding>> oldRepeats;
+        bool committed{};
+        MetadataTransaction(std::vector<BindingTarget> &b, std::vector<RepeatBinding> &r)
+            : bindings(b), repeats(r) {}
+        void save() {
+            if (!oldBindings) {
+                oldBindings = bindings;
+                oldRepeats = repeats;
+            }
+        }
+        ~MetadataTransaction() {
+            if (oldBindings && !committed) {
+                bindings.swap(*oldBindings);
+                repeats.swap(*oldRepeats);
+            }
+        }
+    } transaction(bindings_, repeats_);
+    struct Reorder {
+        LayoutNode *parent;
+        std::size_t first;
+        std::vector<std::size_t> order;
+    };
+    std::vector<Reorder> reorders;
+    struct SourceRemap {
+        BindingSource source;
+        std::vector<std::size_t> indices;
+    };
+    std::vector<SourceRemap> sourceRemaps;
+    for (std::size_t repeatIndex = 0; repeatIndex < repeats_.size(); ++repeatIndex) {
+        auto &repeat = repeats_[repeatIndex];
         if (repeat.source.path.empty() || !affected(repeat.source.path))
             continue;
         auto *v = bindingValue(repeat.source);
         auto *array = v ? std::get_if<Value::Array>(&v->data) : nullptr;
         if (!array || array->size() != repeat.keys.size())
             return false;
+        bool changed = false;
         for (std::size_t i = 0; i < array->size(); ++i) {
             auto *key = property(&(*array)[i], repeat.key);
-            if (!key || key->string() != repeat.keys[i])
+            if (!key)
                 return false;
+            changed |= key->string() != repeat.keys[i];
         }
+        if (!changed)
+            continue;
+        if (repeat.roots.size() != array->size() ||
+            std::ranges::any_of(repeat.roots, [](auto &id) { return id.empty(); }))
+            return false;
+        std::vector<std::string> keys;
+        keys.reserve(array->size());
+        for (auto &item : *array)
+            keys.push_back(property(&item, repeat.key)->string());
+        std::vector<std::size_t> oldIndices(repeat.keys.size());
+        for (std::size_t i = 0; i < repeat.keys.size(); ++i)
+            oldIndices[i] = i;
+        auto less = [&](auto a, auto b) { return repeat.keys[a] < repeat.keys[b]; };
+        std::sort(oldIndices.begin(), oldIndices.end(), less);
+        std::vector<std::size_t> order, remap(keys.size());
+        order.reserve(keys.size());
+        std::vector<bool> seen(keys.size());
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            auto found = std::lower_bound(oldIndices.begin(), oldIndices.end(), keys[i],
+                [&](auto index, const auto &key) { return repeat.keys[index] < key; });
+            if (found == oldIndices.end() || repeat.keys[*found] != keys[i] || seen[*found])
+                return false; // Insert/remove/invalid keys retain candidate validation.
+            seen[*found] = true;
+            order.push_back(*found);
+            remap[*found] = i;
+        }
+        auto *parent = nodeIndex_.at(repeat.roots.front()).parent;
+        if (!parent)
+            return false;
+        auto begin = std::ranges::find_if(parent->children, [&](auto &n) {
+            return n.node.id == repeat.roots.front();
+        });
+        auto first = std::size_t(begin - parent->children.begin());
+        if (first + order.size() > parent->children.size())
+            return false;
+        for (std::size_t i = 0; i < order.size(); ++i)
+            if (parent->children[first + i].node.id != repeat.roots[i])
+                return false;
+        transaction.save();
+        auto source = repeat.source;
+        auto remapSource = [&](BindingSource &target) {
+            auto index = source.steps.size();
+            if (target.path == source.path && target.steps.size() > index &&
+                std::equal(source.steps.begin(), source.steps.end(), target.steps.begin())) {
+                auto *item = std::get_if<std::size_t>(&target.steps[index]);
+                if (item && *item < remap.size())
+                    *item = remap[*item];
+            }
+        };
+        auto prior = std::ranges::find_if(sourceRemaps, [&](auto &entry) {
+            return entry.source.path == source.path && entry.source.steps == source.steps;
+        });
+        if (prior == sourceRemaps.end()) {
+            // Several independent views can bind the same collection. Remap
+            // their shared positional source exactly once, but reorder each view.
+            for (auto &binding : bindings_)
+                remapSource(binding.source);
+            for (auto &nested : repeats_)
+                remapSource(nested.source);
+            sourceRemaps.push_back({std::move(source), remap});
+        } else if (prior->indices != remap)
+            return false; // Different key fields disagree; use candidate validation.
+        std::vector<std::string> roots;
+        roots.reserve(order.size());
+        for (auto index : order)
+            roots.push_back(repeat.roots[index]);
+        repeat.keys = std::move(keys);
+        repeat.roots = std::move(roots);
+        reorders.push_back({parent, first, std::move(order)});
     }
     std::set<std::size_t> targets;
     for (auto &change : data_.changes()) {
@@ -277,6 +398,20 @@ bool Runtime::patchBindings() {
         validateInteraction();
         refreshStyles();
     }
+    // Nested repeats are processed before their parents move. Existing child
+    // vectors/resources/state survive; IDs remain the only durable host handles.
+    for (auto it = reorders.rbegin(); it != reorders.rend(); ++it) {
+        invalidateMeasure(*it->parent);
+        std::vector<LayoutNode> ordered;
+        ordered.reserve(it->order.size());
+        for (auto index : it->order)
+            ordered.push_back(std::move(it->parent->children[it->first + index]));
+        for (std::size_t i = 0; i < ordered.size(); ++i)
+            it->parent->children[it->first + i] = std::move(ordered[i]);
+    }
+    if (!reorders.empty())
+        indexTree(true); // A validated permutation changes addresses, not the ID set.
+    transaction.committed = true;
     return true;
 }
 bool Runtime::refreshStyles() {

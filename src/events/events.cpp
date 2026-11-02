@@ -33,9 +33,11 @@ bool Runtime::processEvent(const Event &input) {
     std::vector<const LayoutNode *> path;
     if (target)
         pathTo(*scope, target->node.id, path);
-    for (auto *n : path)
-        if (n->node.attr("disabled") == "true")
-            return true;
+    if (e.type == EventType::pointerDown || e.type == EventType::pointerUp ||
+        e.type == EventType::pointerMove || e.type == EventType::wheel)
+        for (auto *n : path)
+            if (n->node.attr("disabled") == "true")
+                return true;
     if (e.type == EventType::pointerDown || e.type == EventType::pointerUp ||
         e.type == EventType::pointerMove) {
         for (auto it = path.rbegin(); it != path.rend(); ++it)
@@ -104,12 +106,15 @@ bool Runtime::processEvent(const Event &input) {
             Event derived = e;
             derived.type = type;
             RoutedEvent routed{id, id, derived, false};
-            eventObserver_(routed);
+            auto observer = eventObserver_;
+            observer(routed);
         }
     };
     auto setFocus = [&](std::string id) {
         if (focus_ != id) {
             auto old = focus_;
+            if (auto state = states_.find(old); state != states_.end())
+                state->second.composition.clear();
             focus_ = std::move(id);
             notify(EventType::focusLost, old);
             notify(EventType::focusGained, focus_);
@@ -120,6 +125,10 @@ bool Runtime::processEvent(const Event &input) {
     if (e.type == EventType::focusLost) {
         setFocus({});
         capture_.clear();
+        slotCapture_.clear();
+        drag_.clear();
+        invalidateStyle(hover_);
+        hover_.clear();
         invalidateStyle(pressed_);
         pressed_.clear();
         return true;
@@ -141,7 +150,7 @@ bool Runtime::processEvent(const Event &input) {
                 float viewport = n.bounds.h - 2 * (n.style.padding + n.style.borderWidth);
                 st.scroll.y =
                     std::clamp(st.scroll.y - e.delta * 36, 0.f, std::max(0.f, n.contentSize.y - viewport));
-                layoutDirty_ = true;
+                invalidatePlacement(*nodeIndex_.at(n.node.id).node);
                 return true;
             }
     }
@@ -356,8 +365,11 @@ bool Runtime::processEvent(const Event &input) {
                 ids.push_back(n->node.id);
             RoutedEvent routed{targetId, {}, e, false};
             for (auto it = ids.rbegin(); it != ids.rend(); ++it) {
+                if (!eventObserver_)
+                    break;
                 routed.current = *it;
-                eventObserver_(routed);
+                auto observer = eventObserver_;
+                observer(routed);
                 if (routed.handled)
                     return true;
             }

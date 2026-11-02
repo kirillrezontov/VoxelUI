@@ -32,7 +32,7 @@ float segmentDistance(Vec2 p, Vec2 a, Vec2 b) {
     return std::hypot(p.x - a.x - t * x, p.y - a.y - t * y);
 }
 } // namespace
-void SoftwareRenderer::render(const DrawList &list) {
+void SoftwareRenderer::render(const DrawList &list, Color clear) {
     if (!std::isfinite(list.framebufferScale))
         throw std::invalid_argument("Invalid framebuffer scale");
     float dpi = std::clamp(list.framebufferScale, .25f, 8.f);
@@ -45,8 +45,12 @@ void SoftwareRenderer::render(const DrawList &list) {
     width_ = int(w);
     height_ = int(h);
     pixels_.assign(std::size_t(width_) * height_ * 4, 0);
-    for (std::size_t i = 3; i < pixels_.size(); i += 4)
-        pixels_[i] = 255;
+    for (std::size_t i = 0; i < pixels_.size(); i += 4) {
+        pixels_[i] = clear.r;
+        pixels_[i + 1] = clear.g;
+        pixels_[i + 2] = clear.b;
+        pixels_[i + 3] = clear.a;
+    }
     std::vector<Rect> clips{{0, 0, float(width_), float(height_)}};
     std::vector<Transform> transforms{{dpi, 0, 0, dpi, 0, 0}};
     auto blend = [&](int x, int y, Color c) {
@@ -55,9 +59,21 @@ void SoftwareRenderer::render(const DrawList &list) {
             return;
         auto i = (std::size_t(y) * width_ + x) * 4;
         unsigned a = c.a;
-        pixels_[i] = std::uint8_t((c.r * a + pixels_[i] * (255 - a) + 127) / 255);
-        pixels_[i + 1] = std::uint8_t((c.g * a + pixels_[i + 1] * (255 - a) + 127) / 255);
-        pixels_[i + 2] = std::uint8_t((c.b * a + pixels_[i + 2] * (255 - a) + 127) / 255);
+        unsigned destinationAlpha = pixels_[i + 3];
+        if (destinationAlpha == 255) {
+            pixels_[i] = std::uint8_t((c.r * a + pixels_[i] * (255 - a) + 127) / 255);
+            pixels_[i + 1] = std::uint8_t((c.g * a + pixels_[i + 1] * (255 - a) + 127) / 255);
+            pixels_[i + 2] = std::uint8_t((c.b * a + pixels_[i + 2] * (255 - a) + 127) / 255);
+        } else {
+            unsigned alpha = a * 255 + destinationAlpha * (255 - a);
+            auto channel = [&](unsigned source, unsigned destination) {
+                return std::uint8_t((source * a * 255 + destination * destinationAlpha * (255 - a) + alpha / 2) / alpha);
+            };
+            pixels_[i] = channel(c.r, pixels_[i]);
+            pixels_[i + 1] = channel(c.g, pixels_[i + 1]);
+            pixels_[i + 2] = channel(c.b, pixels_[i + 2]);
+            pixels_[i + 3] = std::uint8_t((alpha + 127) / 255);
+        }
     };
     auto raster = [&](Rect rect, Transform matrix, auto &&sample) {
         if (rect.w <= 0 || rect.h <= 0)

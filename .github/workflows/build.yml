@@ -26,6 +26,12 @@ jobs:
         run: cmake --build out --config Debug --parallel 2
       - name: Test
         run: ctest --test-dir out -C Debug --output-on-failure
+      - name: Installed public API consumer
+        run: |
+          cmake --install out --config Debug --prefix stage
+          cmake -S tests/consumer -B consumer -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=${{ github.workspace }}/out/vcpkg_installed -DVCPKG_MANIFEST_DIR=${{ github.workspace }}
+          cmake --build consumer --config Debug --parallel 2
+          ctest --test-dir consumer -C Debug --output-on-failure
   sanitizers:
     runs-on: ubuntu-latest
     steps:

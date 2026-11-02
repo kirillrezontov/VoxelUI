@@ -8,7 +8,8 @@ class SoftwareRenderer {
     std::vector<std::uint8_t> pixels_;
 
   public:
-    void render(const DrawList &);
+    // Transparent targets preserve straight alpha for host composition.
+    void render(const DrawList &, Color clear = {0, 0, 0, 255});
     int width() const {
         return width_;
     }

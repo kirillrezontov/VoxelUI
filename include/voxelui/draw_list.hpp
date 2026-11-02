@@ -5,39 +5,47 @@
 namespace voxelui {
 inline namespace v1 {
 struct DrawRectangle {
+    bool operator==(const DrawRectangle &) const = default;
     Rect bounds;
     Color fill, border;
     float borderWidth{}, radius{};
 };
 struct DrawImage {
+    bool operator==(const DrawImage &) const = default;
     Rect bounds;
     std::shared_ptr<const Image> image;
     float opacity{1};
 };
 struct DrawText {
+    bool operator==(const DrawText &) const = default;
     Vec2 origin;
     std::shared_ptr<const TextLayout> layout;
     Color color;
 };
 struct DrawVectorGeometry {
+    bool operator==(const DrawVectorGeometry &) const = default;
     Rect bounds;
     std::shared_ptr<const VectorDocument> geometry;
     float opacity{1};
 };
 struct PushClip {
+    bool operator==(const PushClip &) const = default;
     Rect bounds;
 };
-struct PopClip {};
+struct PopClip { bool operator==(const PopClip &) const = default; };
 struct PushTransform {
+    bool operator==(const PushTransform &) const = default;
     Transform transform;
 };
-struct PopTransform {};
+struct PopTransform { bool operator==(const PopTransform &) const = default; };
 using DrawCommand = std::variant<DrawRectangle, DrawImage, DrawText, DrawVectorGeometry, PushClip, PopClip,
                                  PushTransform, PopTransform>;
 struct DrawBatch {
+    bool operator==(const DrawBatch &) const = default;
     std::size_t first{}, count{}, commandType{};
 };
 struct DrawList {
+    bool operator==(const DrawList &) const = default;
     std::vector<DrawCommand> commands;
     Vec2 logicalSize;
     float framebufferScale{1};

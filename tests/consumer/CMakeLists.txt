@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.25)
+project(VoxelUIConsumer LANGUAGES CXX)
+find_package(VoxelUI 0.2.1 EXACT CONFIG REQUIRED COMPONENTS voxelui software)
+add_executable(external-widget main.cpp)
+target_link_libraries(external-widget PRIVATE VoxelUI::voxelui VoxelUI::software)
+enable_testing()
+add_test(NAME external-widget COMMAND external-widget)

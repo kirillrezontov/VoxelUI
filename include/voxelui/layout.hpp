@@ -12,6 +12,9 @@ struct LayoutNode {
     // Measurement cache. Public computeLayout defaults to full recomputation.
     bool measureDirty{true};
     Vec2 measuredAvailable{}, measuredSize{};
+    // Includes incoming clip and final (possibly stretched) bounds.
+    bool placementDirty{true};
+    Rect placedBounds{}, placedClip{};
 };
 struct LayoutStats {
     std::size_t passes{}, nodes{}, placed{};

@@ -17,6 +17,7 @@ struct FrameInfo {
 struct RuntimeStats {
     std::size_t fullRebuilds{}, bindingEvaluations{}, patchedNodes{}, styledNodes{}, measuredNodes{},
         placedNodes{};
+    std::size_t paintVisits{}, culledLeaves{}, emittedCommands{};
 };
 class Runtime {
     Resources resources_;
@@ -66,6 +67,7 @@ class Runtime {
         BindingSource source;
         std::string key;
         std::vector<std::string> keys;
+        std::vector<std::string> roots; // One computed root per keyed item; empty for fanout.
     };
     struct NodeIndex {
         LayoutNode *node{}, *parent{};
@@ -80,19 +82,27 @@ class Runtime {
     RuntimeStats runtimeStats_;
     std::size_t expandedBytes_{};
     const Value *bindingValue(const BindingSource &) const;
-    void indexTree();
+    void indexTree(bool reuseIds = false);
     void invalidateMeasure(LayoutNode &);
+    void invalidatePlacement(LayoutNode &);
     void invalidateStyle(std::string_view);
     bool patchBindings();
     bool refreshStyles();
     void layout();
     void validateInteraction();
     void rebuild();
-    void paint(const LayoutNode &, DrawList &);
+    void paint(const LayoutNode &, DrawList &, Rect incomingClip);
     void activate(const LayoutNode &);
     void write(const LayoutNode &, std::string_view, Value);
 
   public:
+    Runtime() = default;
+    Runtime(const Runtime &) = delete;
+    Runtime &operator=(const Runtime &) = delete;
+    // TextSystem retains a reference to this runtime's resource resolver.
+    Runtime(Runtime &&) = delete;
+    Runtime &operator=(Runtime &&) = delete;
+    const DataModel &data() const { return data_; }
     Resources &resources() {
         return resources_;
     }

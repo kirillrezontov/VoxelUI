@@ -108,7 +108,7 @@ void Runtime::rebuild() {
             auto *value = path ? get(*path, item, props) : nullptr;
             auto *array = value ? std::get_if<Value::Array>(&value->data) : nullptr;
             if (!array) {
-                repeats_.push_back({path ? sourceFor(*path) : BindingSource{}, authored.attr("key"), {}});
+                repeats_.push_back({path ? sourceFor(*path) : BindingSource{}, authored.attr("key"), {}, {}});
                 diagnostics_.push_back({Severity::warning, authored.source, authored.line, 1,
                                         "Repeat items is missing or is not an array"});
                 return result;
@@ -125,7 +125,10 @@ void Runtime::rebuild() {
                 "/";
             auto repeatSource = path ? sourceFor(*path) : BindingSource{};
             auto repeatIndex = repeats_.size();
-            repeats_.push_back({repeatSource, authored.attr("key"), {}});
+            repeats_.push_back({repeatSource, authored.attr("key"), {}, {}});
+            repeats_.back().keys.reserve(array->size());
+            repeats_.back().roots.reserve(array->size());
+            result.reserve(array->size());
             auto savedItemSource = itemSource;
             std::size_t itemIndex = 0;
             for (auto &entry : *array) {
@@ -147,6 +150,7 @@ void Runtime::rebuild() {
                 }
                 auto children = expand(authored.children.front(), parent, identity + safe + "/", &entry,
                                        props, depth + 1);
+                repeats_[repeatIndex].roots.push_back(children.size() == 1 ? children.front().node.id : "");
                 for (auto &c : children)
                     result.push_back(std::move(c));
                 if (count > limits.elements)

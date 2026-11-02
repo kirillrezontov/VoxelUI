@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
         double us =
             std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() /
             iterations;
-        std::cout << std::left << std::setw(34) << name << std::right << std::fixed << std::setprecision(2)
+        std::cout << std::left << std::setw(36) << name << ' ' << std::right << std::fixed << std::setprecision(2)
                   << us << " us/op (" << iterations << "), "
                   << double(allocations - allocationStart) / iterations << " allocations/op\n";
 #ifdef VOXELUI_BENCH_STATS
@@ -59,6 +59,11 @@ int main(int argc, char **argv) {
                       << " measured=" << double(after.measuredNodes - before.measuredNodes) / iterations
                       << " placed=" << double(after.placedNodes - before.placedNodes) / iterations
                       << " rebuilds=" << double(after.fullRebuilds - before.fullRebuilds) / iterations
+#ifdef VOXELUI_BENCH_PAINT_STATS
+                      << " paintVisits=" << double(after.paintVisits - before.paintVisits) / iterations
+                      << " culledLeaves=" << double(after.culledLeaves - before.culledLeaves) / iterations
+                      << " commands=" << double(after.emittedCommands - before.emittedCommands) / iterations
+#endif
                       << '\n';
         }
 #endif
@@ -276,5 +281,23 @@ int main(int argc, char **argv) {
             emit(complex);
         },
         &complex);
+    // Control for viewport culling: every cell fits inside the viewport. This
+    // keeps the cost of actually emitting a thousand text elements visible.
+    Runtime visible;
+    demo::mount(visible, argc > 1 ? argv[1] : "examples");
+    visible.data().set("label", "A");
+    visible.setStyleOverride("Text {font-size:10dp}");
+    std::string grid = "<Screen version=\"1\"><Grid columns=\"40\" style=\"width:100%\">"
+                       "<Text value=\"{label}\"/>";
+    for (int i = 0; i < 999; ++i)
+        grid += "<Text value=\"x\"/>";
+    grid += "</Grid></Screen>";
+    if (!visible.loadXml(grid))
+        return 1;
+    measure("Pipeline fully visible text (1000)", 100, [&](int i) {
+        visible.data().set("label", i % 2 ? "B" : "A");
+        visible.update();
+        emit(visible);
+    }, &visible);
     std::cout << "Observable checksum: " << sink << '\n';
 }

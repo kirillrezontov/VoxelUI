@@ -2,19 +2,30 @@
 namespace voxelui {
 inline namespace v1 {
 using namespace runtime_detail;
-void Runtime::paint(const LayoutNode &n, DrawList &list) {
+void Runtime::paint(const LayoutNode &n, DrawList &list, Rect incomingClip) {
+    ++runtimeStats_.paintVisits;
     if (!n.style.visible)
         return;
+    // Only built-in leaf primitives are bounded by their layout box. Overflow
+    // descendants, custom drawing and SVG geometry/slots can extend outside it.
+    // Use the actual emitted clip stack, which need not equal a hit-test clip.
+    auto visibleBounds = intersect(incomingClip, n.bounds);
+    if ((visibleBounds.w <= 0 || visibleBounds.h <= 0) && n.children.empty() &&
+        (n.node.tag == "Text" || (n.node.tag != "Vector" && builtinTag(n.node.tag)))) {
+        ++runtimeStats_.culledLeaves;
+        return;
+    }
     auto &s = n.style;
     auto &b = n.bounds;
     auto fill = faded(s.background, s.opacity), border = faded(s.border, s.opacity);
     if (fill.a || s.borderWidth > 0)
         list.commands.emplace_back(DrawRectangle{b, fill, border, s.borderWidth, s.radius});
-    if (s.clip)
-        list.commands.emplace_back(PushClip{n.clip});
-    auto *state = this->state(n.node.id);
     float p = s.padding + s.borderWidth;
     Rect content{b.x + p, b.y + p, std::max(0.f, b.w - 2 * p), std::max(0.f, b.h - 2 * p)};
+    if (s.clip)
+        list.commands.emplace_back(PushClip{content});
+    auto childClip = s.clip ? intersect(incomingClip, content) : incomingClip;
+    auto *state = this->state(n.node.id);
     if (n.node.tag == "ProgressBar" || n.node.tag == "Slider") {
         list.commands.emplace_back(DrawRectangle{b, {40, 49, 62, 255}, {}, 0, 4});
         float min = numeric(n.node, "min"), max = std::max(min + .001f, numeric(n.node, "max", 1));
@@ -126,7 +137,7 @@ void Runtime::paint(const LayoutNode &n, DrawList &list) {
         definition.draw({n.node, b}, list);
     }
     for (auto &c : n.children)
-        paint(c, list);
+        paint(c, list, childClip);
     if (s.clip)
         list.commands.emplace_back(PopClip{});
     if (focus_ == n.node.id)
@@ -142,7 +153,8 @@ DrawList Runtime::buildDrawList(bool debug) {
     list.framebufferScale = frame_.dpiScale;
     list.commands.emplace_back(PushTransform{{frame_.uiScale, 0, 0, frame_.uiScale, 0, 0}});
     if (treeLifetime)
-        paint(*treeLifetime, list);
+        paint(*treeLifetime, list,
+              {0, 0, frame_.viewport.x / frame_.uiScale, frame_.viewport.y / frame_.uiScale});
     if (debug && tree_) {
         std::function<void(const LayoutNode &)> outline = [&](const LayoutNode &n) {
             list.commands.emplace_back(DrawRectangle{n.bounds, {0, 0, 0, 0}, {255, 80, 120, 180}, 1, 0});
@@ -169,6 +181,7 @@ DrawList Runtime::buildDrawList(bool debug) {
         }
     list.commands.emplace_back(PopTransform{});
     list.rebuildBatches();
+    runtimeStats_.emittedCommands += list.commands.size();
     return list;
 }
 } // namespace v1

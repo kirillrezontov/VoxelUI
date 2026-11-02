@@ -23,6 +23,7 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
         return n.measuredSize;
     }
     n.measureDirty = false;
+    n.placementDirty = true;
     n.measuredAvailable = available;
     ++stats.nodes;
     auto &s = n.style;
@@ -60,7 +61,7 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
     int index = 0;
     int cols = std::clamp(s.columns, 1, 1000);
     if (auto v = number(n.node.attr("columns")))
-        cols = std::clamp(int(*v), 1, 1000);
+        cols = int(std::clamp(*v, 1., 1000.));
     float gridRow = 0;
     Vec2 accumulated{};
     for (auto &c : n.children) {
@@ -112,11 +113,19 @@ Vec2 measure(LayoutNode &n, Vec2 available, TextSystem &text, const Components &
     return n.measuredSize;
 }
 void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2> &scroll,
-           LayoutStats &stats) {
-    ++stats.placed;
+           LayoutStats &stats, bool incremental) {
     auto &s = n.style;
     n.bounds.x = pos.x;
     n.bounds.y = pos.y;
+    const auto equal = [](Rect a, Rect b) {
+        return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+    };
+    if (incremental && !n.placementDirty && equal(n.bounds, n.placedBounds) && equal(clip, n.placedClip))
+        return;
+    ++stats.placed;
+    n.placementDirty = false;
+    n.placedBounds = n.bounds;
+    n.placedClip = clip;
     n.clip = intersect(clip, n.bounds);
     float p = s.padding + s.borderWidth;
     Rect inner{pos.x + p, pos.y + p, std::max(0.f, n.bounds.w - 2 * p), std::max(0.f, n.bounds.h - 2 * p)};
@@ -141,7 +150,7 @@ void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2>
         cursor = std::max(0.f, extent - total);
     int cols = std::clamp(s.columns, 1, 1000);
     if (auto v = number(n.node.attr("columns")))
-        cols = std::clamp(int(*v), 1, 1000);
+        cols = int(std::clamp(*v, 1., 1000.));
     int index = 0;
     float gridY = 0, rowH = 0;
     for (auto &c : n.children) {
@@ -202,7 +211,7 @@ void place(LayoutNode &n, Vec2 pos, Rect clip, const std::map<std::string, Vec2>
         }
         at.x -= offset.x;
         at.y -= offset.y;
-        place(c, at, childClip, scroll, stats);
+        place(c, at, childClip, scroll, stats, incremental);
     }
 }
 } // namespace
@@ -211,7 +220,7 @@ void computeLayout(LayoutNode &root, Vec2 viewport, TextSystem &text, const Comp
     ++stats.passes;
     stats.nodes = stats.placed = 0;
     measure(root, viewport, text, components, stats, incremental);
-    place(root, {0, 0}, {0, 0, viewport.x, viewport.y}, scroll, stats);
+    place(root, {0, 0}, {0, 0, viewport.x, viewport.y}, scroll, stats, incremental);
 }
 const LayoutNode *hitTest(const LayoutNode &n, Vec2 p) {
     if (!n.style.visible)

@@ -300,7 +300,7 @@ void Runtime::write(const LayoutNode &n, std::string_view attribute, Value value
             data_.set(path, std::move(value));
     }
     if (auto it = nodeIndex_.find(n.node.id); it != nodeIndex_.end()) {
-        if (n.node.tag == "TextInput") {
+        if (n.node.tag == "TextInput" || n.node.tag == "Select") {
             auto &node = it->second.node->node;
             expandedBytes_ -= payloadSize(node);
             node.attributes["value"] = states_.at(n.node.id).text;

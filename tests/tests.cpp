@@ -1252,6 +1252,196 @@ int main() {
         check(ui.focusedId() == "t" && ui.find("t")->style.foreground == Color{255, 0, 0, 255},
               "Rejected data lost focus styling");
     });
+    test("Nested keyed permutations reuse subtrees and remap transactional bindings", [] {
+        auto make = [](int phase, bool invalid = false) {
+            Value::Array outer;
+            for (int n = 0; n < 3; ++n) {
+                Value::Array inner{Value::Object{{"id", "x"}, {"name", "X"}},
+                                   Value::Object{{"id", "y"}, {"name", "Y"}}};
+                if (phase % 2) std::reverse(inner.begin(), inner.end());
+                outer.emplace_back(Value::Object{{"id", std::string(1, char('a'+n))},
+                    {"name", phase % 2 ? "Changed / Привет" : "Item"},
+                    {"ratio", invalid && n == 1 ? Value("bad") : Value(.25 + .1*n)},
+                    {"children", std::move(inner)}});
+            }
+            std::rotate(outer.begin(), outer.begin() + phase % 3, outer.end());
+            return outer;
+        };
+        auto xml = screen("<Text id=\"static\">Unchanged</Text><Column><Repeat id=\"r\" items=\"{items}\" key=\"id\">"
+            "<Column id=\"group\"><TextInput id=\"edit\" value=\"{item.name}\"/>"
+            "<ProgressBar value=\"{item.ratio}\"/><Repeat id=\"nested\" items=\"{item.children}\" key=\"id\">"
+            "<Text id=\"label\" value=\"{item.name}\"/></Repeat></Column></Repeat></Column>");
+        Runtime ui;
+        ui.data().set("items", make(0));check(ui.loadXml(xml), "Nested reorder load");ui.update();
+        const auto* root = ui.tree();const auto* unaffected = ui.find("static");
+        auto rebuilds = ui.runtimeStats().fullRebuilds;
+        click(ui, "r/61/edit");
+        for (int phase = 1; phase < 7; ++phase) {
+            auto before = ui.buildDrawList();
+            ui.data().set("items", make(phase, true));ui.update();
+            check(hasErrors(ui.diagnostics()) && ui.buildDrawList() == before,
+                  "Rejected permutation changed the last good screen");
+            ui.clearDiagnostics();ui.data().set("items", make(phase));ui.update();
+            check(!hasErrors(ui.diagnostics()) && ui.tree() == root && ui.find("static") == unaffected &&
+                  ui.runtimeStats().fullRebuilds == rebuilds && ui.focusedId() == "r/61/edit",
+                  "Permutation rebuilt unrelated storage or lost focus");
+            Runtime fresh;fresh.data().set("items", make(phase));
+            check(fresh.loadXml(xml), "Fresh nested load");fresh.update();click(fresh, "r/61/edit");
+            sameTree(*ui.tree(), *fresh.tree());samePixels(ui, fresh);
+        }
+        // Value patches after several permutations must still resolve the correct item.
+        auto values = make(6);
+        std::get<Value::Object>(values[2].data)["name"] = "Final";
+        ui.data().set("items", values);ui.update();
+        check(ui.find("r/63/edit")->node.attr("value") == "Final", "Stale positional dependency");
+    });
+    test("Placement skips unaffected subtrees and preserves clips stretch and scroll", [] {
+        Runtime ui;
+        const auto xml = screen("<Row style=\"width:100%;height:180dp;align-items:stretch\">"
+            "<Column style=\"width:40%\"><Text id=\"change\" value=\"{label}\"/></Column>"
+            "<ScrollView id=\"scroll\" style=\"width:50%;height:100dp;overflow:hidden\">"
+            "<Grid columns=\"2\" style=\"width:100%;gap:3dp\"><Text style=\"height:50dp\">A</Text><Text>B</Text>"
+            "<Text>C</Text><Text>D</Text><Text>E</Text><Text>F</Text></Grid>"
+            "<Panel id=\"anchored\" anchor=\"bottom-right\" style=\"width:20%;height:12dp\"/>"
+            "</ScrollView></Row>");
+        ui.data().set("label", "A");check(ui.loadXml(xml), "Placement load");ui.update();
+        const auto placed = ui.runtimeStats().placedNodes;
+        ui.data().set("label", "B");ui.update();
+        check(ui.runtimeStats().placedNodes - placed < 8, "Unchanged branch was placed again");
+        for (int i = 0; i < 10; ++i) {
+            FrameInfo frame;frame.viewport = i % 2 ? Vec2{320,240} : Vec2{640,480};
+            frame.uiScale = i % 3 ? 1 : 1.5f;
+            const auto label = i % 2 ? "Label with wrapping / Русский текст" : "A";
+            ui.data().set("label", label);ui.update(frame);
+            Runtime fresh;fresh.data().set("label", label);fresh.update(frame);
+            check(fresh.loadXml(xml), "Fresh placement load");fresh.update(frame);
+            sameTree(*ui.tree(), *fresh.tree());samePixels(ui, fresh);
+        }
+        // Public layout callers can force the oracle even after cached placement.
+        auto copy = *ui.tree();TextSystem text(ui.resources());LayoutStats stats;Components components;
+        computeLayout(copy, {320,240}, text, components, {}, stats);
+        ui.update({1.f/60,1,1,{320,240}});sameTree(*ui.tree(), copy);
+    });
+    test("Transparent software targets preserve straight alpha and opaque defaults", [] {
+        DrawList list;list.logicalSize={2,1};
+        list.commands.emplace_back(DrawRectangle{{0,0,1,1},{255,0,0,128},{},0,0});
+        list.commands.emplace_back(DrawRectangle{{0,0,1,1},{0,0,255,128},{},0,0});
+        SoftwareRenderer renderer;renderer.render(list,{0,0,0,0});
+        const auto& pixels=renderer.pixels();
+        check(pixels[0]==85 && pixels[1]==0 && pixels[2]==170 && pixels[3]==192 && pixels[7]==0,
+              "Transparent source-over lost alpha or premultiplied twice");
+        renderer.render(list);check(renderer.pixels()[3]==255 && renderer.pixels()[7]==255,
+                                     "Default target changed");
+        auto copy=list;check(copy==list,"DrawList equality");
+        std::get<DrawRectangle>(copy.commands[0]).bounds.x=1;
+        check(copy!=list,"Command equality missed geometry");
+    });
+    test("Focus loss cancels composition hover and captured drag state", [] {
+        Runtime ui;
+        check(ui.loadXml(screen("<Button disabled=\"true\">Disabled pointer origin</Button><TextInput id=\"a\"/><TextInput id=\"b\"/><Button id=\"drag\" draggable=\"true\">Drag</Button>")), "Focus-loss load");
+        click(ui, "a");
+        Event e;e.type=EventType::composition;e.text="Привет";ui.processEvent(e);
+        check(!ui.state("a")->composition.empty(), "Missing preedit");
+        key(ui, Key::tab);check(ui.state("a")->composition.empty(), "Tab retained old composition");
+        click(ui, "a");ui.processEvent(e);
+        e.type=EventType::focusLost;ui.processEvent(e);ui.update();
+        check(ui.focusedId().empty() && ui.state("a")->composition.empty(), "Window focus retained composition");
+        int starts=0,ends=0;
+        ui.observeEvents([&](RoutedEvent &event) { starts+=event.event.type==EventType::dragStart;ends+=event.event.type==EventType::dragEnd; });
+        auto bounds=ui.find("drag")->bounds;
+        e={};e.position={bounds.x+2,bounds.y+2};e.type=EventType::pointerDown;ui.processEvent(e);
+        e.type=EventType::pointerMove;e.position.x+=12;ui.processEvent(e);check(starts==1,"Drag did not start");
+        e.type=EventType::focusLost;ui.processEvent(e);
+        e.type=EventType::pointerUp;ui.processEvent(e);check(ends==0,"Focus loss left a pending drag callback");
+    });
+    test("Event observers can unregister their own executing callback", [] {
+        Runtime ui;check(ui.loadXml(screen("<Panel id=\"panel\" style=\"width:100dp;height:100dp\"/>")), "Observer load");
+        auto marker=std::make_shared<int>(42);std::weak_ptr<int> weak=marker;int calls=0;
+        ui.observeEvents([&,owned=marker](RoutedEvent &) {
+            ui.observeEvents({});
+            check(!weak.expired() && *owned==42,"Executing observer closure was destroyed");
+            ++calls;
+        });
+        marker.reset();Event e;e.type=EventType::pointerMove;e.position={2,2};
+        ui.processEvent(e);ui.processEvent(e);
+        check(calls==1 && weak.expired(),"Observer unregistration retained or dispatched a callback");
+    });
+    test("Repeated views of one collection remap positional bindings only once", [] {
+        const auto xml=screen("<Column><Repeat id=\"first\" items=\"{items}\" key=\"id\"><Text id=\"text\" value=\"{item.name}\"/></Repeat>"
+            "<Repeat id=\"second\" items=\"{items}\" key=\"id\"><Text id=\"other-text\" value=\"{item.name}\"/></Repeat></Column>");
+        Value::Array items{Value::Object{{"id","a"},{"name","Alpha"}},Value::Object{{"id","b"},{"name","Beta"}},Value::Object{{"id","c"},{"name","Gamma"}}};
+        Runtime ui;ui.data().set("items",items);check(ui.loadXml(xml),"Shared collection load");ui.update();
+        const auto builds=ui.runtimeStats().fullRebuilds;
+        for(int i=0;i<5;++i) {
+            std::rotate(items.begin(),items.begin()+1,items.end());
+            std::get<Value::Object>(items.front().data)["name"]="Updated "+std::to_string(i);
+            ui.data().set("items",items);ui.update();
+            Runtime fresh;fresh.data().set("items",items);check(fresh.loadXml(xml),"Fresh shared collection load");fresh.update();
+            sameTree(*ui.tree(),*fresh.tree());samePixels(ui,fresh);
+            check(ui.runtimeStats().fullRebuilds==builds,"Shared views fell back to expansion");
+        }
+    });
+    test("Local Select edits invalidate intrinsic geometry without a model write", [] {
+        Runtime ui;
+        const auto xml=screen("<Row><Select id=\"select\" value=\"A\" options=\"A|Longer option label\"/><Text id=\"after\">After</Text></Row>");
+        check(ui.loadXml(xml),"Select geometry load");ui.update();
+        const float before=ui.find("select")->bounds.w;
+        click(ui,"select");
+        check(ui.find("select")->bounds.w>before && ui.find("select")->node.attr("value")=="Longer option label",
+              "Local Select value did not invalidate its measured content");
+        Runtime fresh;
+        check(fresh.loadXml(screen("<Row><Select id=\"select\" value=\"Longer option label\" options=\"A|Longer option label\"/><Text id=\"after\">After</Text></Row>")),"Fresh Select load");
+        fresh.update();sameTree(*ui.tree(),*fresh.tree());key(fresh,Key::tab);samePixels(ui,fresh);
+    });
+    test("Clipped built-in leaves omit paint work without dropping overflow or custom drawing", [] {
+        Runtime ui;
+        int draws=0;
+        ui.components().registerWidget("Outside",{
+            [](const Node &,Vec2) { return Vec2{1,1}; },
+            [&](const WidgetContext &,DrawList &list) {
+                ++draws;
+                list.commands.emplace_back(DrawRectangle{{0,0,8,8},{20,180,70,255},{},0,0});
+            },{}});
+        const auto xml=screen("<Column><Panel style=\"width:1dp;height:100dp\"/>"
+            "<Panel id=\"outside-parent\" style=\"width:100dp;height:1dp\">"
+            "<Text id=\"overflow\" anchor=\"bottom-left\" value=\"Overflow\" style=\"width:90dp;height:40dp;background:#c8140a\"/>"
+            "</Panel><Text id=\"hidden-paint\" value=\"Outside viewport\" style=\"height:20dp\"/><Outside/></Column>");
+        ui.update({1.f/60,1,1,{100,80}});check(ui.loadXml(xml),"Culling load");
+        check(ui.find("outside-parent")->clip.h==0 && ui.find("overflow")->clip.h>0,"Overflow fixture");
+        const auto before=ui.runtimeStats();auto list=ui.buildDrawList();const auto after=ui.runtimeStats();
+        check(draws==1 && after.culledLeaves>before.culledLeaves,"Custom drawing was culled or outside text emitted");
+        check(std::ranges::count_if(list.commands,[](auto &cmd){ return std::holds_alternative<DrawText>(cmd); })==1,
+              "Overflow text lost or outside text emitted");
+        SoftwareRenderer image;image.render(list);
+        const auto &pixels=image.pixels();
+        check(pixels[0]==20 && pixels[1]==180 && pixels[2]==70,"Custom drawing outside layout box was lost");
+        const auto red=(std::size_t(75)*100+85)*4;
+        check(pixels[red]==200 && pixels[red+1]==20 && pixels[red+2]==10,"Visible overflow was lost");
+    });
+    test("Paint culling follows emitted clips at padding and refreshes after scroll", [] {
+        Runtime ui;
+        auto xml=screen("<ScrollView id=\"scroll\" style=\"width:80dp;height:40dp;padding:10dp;overflow:hidden\">"
+            "<Panel style=\"width:60dp;height:20dp\"/>"
+            "<Text id=\"edge\" value=\"X\" style=\"width:60dp;height:20dp;background:#c8140a\"/>"
+            "<Text id=\"below\" value=\"Later\" style=\"width:60dp;height:20dp\"/></ScrollView>");
+        ui.update({1.f/60,1.5f,1.25f,{120,90}});check(ui.loadXml(xml),"Padded culling load");
+        check(ui.find("edge")->clip.h==0,"Padded clip fixture");
+        auto list=ui.buildDrawList();
+        check(std::ranges::none_of(list.commands,[](auto &cmd){ return std::holds_alternative<DrawText>(cmd); }),
+              "Clipped children painted in container padding outside the hit-test region");
+        SoftwareRenderer image;image.render(list);
+        const auto padding=(std::size_t(65)*image.width()+50)*4;
+        check(image.pixels()[padding]==0 && image.pixels()[padding+1]==0 && image.pixels()[padding+2]==0,
+              "Container paint clip differs from its content/hit-test clip");
+        Event wheel;wheel.type=EventType::wheel;wheel.position={30,30};wheel.delta=-1;
+        ui.processEvent(wheel);ui.update({1.f/60,1.5f,1.25f,{120,90}});
+        auto scrolled=ui.buildDrawList();
+        check(std::ranges::count_if(scrolled.commands,[](auto &cmd){ return std::holds_alternative<DrawText>(cmd); })>=1,
+              "Newly scrolled content stayed culled");
+        Runtime fresh;fresh.update({1.f/60,1.5f,1.25f,{120,90}});check(fresh.loadXml(xml),"Fresh scroll load");
+        fresh.processEvent(wheel);fresh.update({1.f/60,1.5f,1.25f,{120,90}});
+        sameTree(*ui.tree(),*fresh.tree());samePixels(ui,fresh);
+    });
     std::cout << passed << " passed, " << failures << " failed\n";
     return failures ? 1 : 0;
 }

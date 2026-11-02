@@ -12,9 +12,11 @@ namespace voxelui {
 inline namespace v1 {
 inline constexpr unsigned api_version = 1;
 struct Vec2 {
+    bool operator==(const Vec2 &) const = default;
     float x{}, y{};
 };
 struct Rect {
+    bool operator==(const Rect &) const = default;
     float x{}, y{}, w{}, h{};
     bool contains(Vec2 p) const {
         return w > 0 && h > 0 && p.x >= x && p.y >= y && p.x < x + w && p.y < y + h;
@@ -30,6 +32,7 @@ struct Color {
     bool operator==(const Color &) const = default;
 };
 struct Transform {
+    bool operator==(const Transform &) const = default;
     float a{1}, b{}, c{}, d{1}, e{}, f{};
     Vec2 apply(Vec2 p) const {
         return {a * p.x + c * p.y + e, b * p.x + d * p.y + f};
