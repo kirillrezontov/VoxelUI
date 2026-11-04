@@ -144,6 +144,7 @@ void Runtime::paint(const LayoutNode &n, DrawList &list, Rect incomingClip) {
         list.commands.emplace_back(DrawRectangle{b, {0, 0, 0, 0}, {103, 188, 255, 255}, 2, s.radius});
 }
 DrawList Runtime::buildDrawList(bool debug) {
+    profiling::Scope timing(profiling::Stage::drawList);
     auto currentFrame = frame_;
     currentFrame.deltaSeconds = 0;
     update(currentFrame);

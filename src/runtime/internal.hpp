@@ -1,4 +1,5 @@
 #pragma once
+#include <voxelui/profiling.hpp>
 #include <functional>
 #include <sstream>
 #include <voxelui/runtime.hpp>
