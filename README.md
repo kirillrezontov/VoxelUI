@@ -53,6 +53,14 @@ Set `VOXELUI_PREVIEW_SDL=OFF` for a core/headless build. Installed consumers use
 `find_package(VoxelUI CONFIG REQUIRED)` and targets `VoxelUI::voxelui` and
 optionally `VoxelUI::software`. Public interfaces live in `voxelui::v1`.
 
+`voxelui/profiling.hpp` provides an optional UI-thread phase observer for
+bindings, rebuild, style, layout, animation, event processing and DrawList
+generation. `profiling::Observe` restores a previous sink on scope exit. With no
+sink, the hooks do not read a clock. Callbacks must not throw. Times are inclusive:
+DrawList generation flushes pending runtime work and events may recurse. Hosts
+using an older 0.2.1 package without this additive header can still render, but
+cannot collect these internal phase timings.
+
 For a single-config Linux generator, configure and install the **same** build
 type. `--config Debug` does not select compiler flags for Ninja/Makefiles.
 Test each installed configuration with a separate prefix and consumer directory:
@@ -107,7 +115,7 @@ Mock data and host actions belong to the examples, not the core.
 
 ## Verification and continuation
 
-The integration executable contains **66 named test cases**, including all six
+The integration executable contains **67 named test cases**, including all six
 examples, interaction/lifecycle/security cases, and fresh-runtime comparisons of
 geometry, styles and software pixels after incremental changes at multiple scales.
 Debug, Release and ASan+UBSan checks, six byte-identical before/after example PNGs,
