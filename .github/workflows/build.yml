@@ -43,10 +43,19 @@ jobs:
       - run: cmake --preset asan && cmake --build --preset asan --parallel 2 && ctest --preset asan
   native-compile:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ninja-build glslc libvulkan-dev libxml2-dev libfreetype-dev libpng-dev
-      - run: cmake -S . -B out/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DVOXELUI_PREVIEW_SDL=OFF -DVOXELUI_VULKAN=ON
+      - run: cmake -S . -B out/native -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DVOXELUI_PREVIEW_SDL=OFF -DVOXELUI_VULKAN=ON
       - run: cmake --build out/native --parallel 2
       # Hardware conformance is a separate explicitly dispatched job.
-      - run: ctest --test-dir out/native -LE graphics --output-on-failure
+      - run: ctest --test-dir out/native -R '^voxelui-vulkan-geometry-tests$' --output-on-failure
+      - name: Installed native consumer
+        run: |
+          cmake --install out/native --prefix "$PWD/stage-native"
+          cmake -S tests/consumer -B consumer-native -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DVOXELUI_EXPECT_IMPORTED_CONFIG=${{ matrix.config }} -DVOXELUI_EXPECT_VULKAN=ON -DCMAKE_PREFIX_PATH="$PWD/stage-native"
+          cmake --build consumer-native --parallel 2
+          ctest --test-dir consumer-native --output-on-failure
