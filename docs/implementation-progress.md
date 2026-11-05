@@ -35,12 +35,10 @@ primarily omitted command emission; traversal remains O(tree). Exact methodology
 allocations, counters, regressions and raw runs are in
 [performance-before-after.md](performance-before-after.md).
 
-VoxelCraft's separate local `main` consumes the public source/package targets and
-the existing Vulkan device through a software-surface reference bridge. Its menu,
-connection/status/error screens and subsequent gameplay migration are host work;
-the standalone library acquires no game, SDL or Vulkan dependency. This bridge is
-not a native GPU DrawList backend. See that repository's
-`docs/vulkan-ui-integration.md` for its current scope and executed checks.
+VoxelCraft consumes the optional [native Vulkan backend](../backends/vulkan/README.md)
+using its existing device and frame lifecycle. Menus, pause and HUD draw directly
+from DrawLists with cached SVG geometry and a shared glyph/image atlas. A software
+bridge remains selectable for reference comparisons. Core has no Vulkan dependency.
 
 Remaining work: regional insertion/removal reconciliation, ancestor aggregation,
 collection Value copies, full visible command generation, reusable GPU payload

@@ -104,16 +104,11 @@ int main() try {
             throw std::runtime_error("expected " + std::string(reason) + ": " + result.error().message);
     };
     DrawRectangle rect{{1, 1, 10, 10}, {255, 255, 255, 128}, {255, 0, 0, 128}, 0, 0};
-    for (auto command :
-         {DrawCommand{DrawImage{}}, DrawCommand{DrawText{}}, DrawCommand{DrawVectorGeometry{}}}) {
-        reject({rect, command}, "not implemented");
-        require(compileGeometry(list).error().command == 1, "wrong failing command index");
-    }
     auto rounded = rect;
     rounded.radius = 1;
-    list.commands={rounded};
-    auto roundedMesh=compileGeometry(list);
-    require(roundedMesh && !roundedMesh->vertices.empty() && roundedMesh->vertices[0].rounding.x==1,
+    list.commands = {rounded};
+    auto roundedMesh = compileGeometry(list);
+    require(roundedMesh && !roundedMesh->vertices.empty() && roundedMesh->vertices[0].rounding.x == 1,
             "rounded fragment parameters missing");
     reject({PopClip{}}, "underflow");
     reject({PopTransform{}}, "underflow");
@@ -139,6 +134,27 @@ int main() try {
     compare(list);
     list.logicalSize.x = std::numeric_limits<float>::quiet_NaN();
     require(!compileGeometry(list), "NaN viewport accepted");
+    list.logicalSize = {64, 64};
+    Compiler compiler;
+    auto image = std::make_shared<Image>(Image{1, 1, {20, 40, 60, 255}});
+    list.commands = {DrawImage{{0, 0, 10, 10}, image, 1}};
+    auto first = compiler.compile(list);
+    require(bool(first), "image compile failed");
+    const auto oldPixels = first->atlas->rgba;
+    auto secondImage = std::make_shared<Image>(Image{1, 1, {90, 100, 110, 255}});
+    list.commands.push_back(DrawImage{{10, 0, 10, 10}, secondImage, 1});
+    auto second = compiler.compile(list);
+    require(bool(second), "second image compile failed");
+    require(first->atlas->rgba == oldPixels && first->atlas != second->atlas,
+            "atlas edit mutated published frame");
+    auto repeated = compiler.compile(list);
+    require(repeated && repeated->atlas == second->atlas, "unchanged atlas was rebuilt");
+    auto invalidImage = std::make_shared<Image>(Image{2, 2, {1}});
+    reject({DrawImage{{0, 0, 2, 2}, invalidImage, 1}}, "invalid");
+    auto oversized = std::make_shared<Image>();
+    oversized->width = 4096;
+    oversized->height = 1;
+    reject({DrawImage{{0, 0, 2, 2}, oversized, 1}}, "oversized");
     std::cout << comparisons + 3 << " software comparisons and budget/diagnostic cases passed\n";
 } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

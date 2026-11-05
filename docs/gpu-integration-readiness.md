@@ -74,7 +74,8 @@ Changed surfaces still rasterize/upload synchronously; GPU timestamps are not
 claimed. The next adapter needs the native caches and conformance work above.
 
 The optional [native Vulkan backend](../backends/vulkan/README.md) now records
-square/rounded rectangles, borders and clip/transform stacks using a host device,
-pipeline and reusable fence-checked buffers. Primitive hardware readback tests
-exist. Images, text, SVG, atlases, caches and game selection remain unimplemented.
-This does not change the public DrawList contract.
+all DrawList variants using the host device and completion fences. It includes
+bounded image/glyph atlas storage, cached even-odd SVG tessellation, gradients,
+strokes, resource counts and hardware readback checks. VoxelCraft's native adapter
+uses it for existing menus/pause/HUD. See the backend contract for size budgets,
+sRGB composition differences and recording/submission requirements.

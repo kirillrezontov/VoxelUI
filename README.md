@@ -8,9 +8,9 @@ A working initial engine, six examples, tools and tests are implemented. **Not e
 requirement in SPEC.md is finished.** The exact supported profile and remaining
 work are recorded below and in [implementation progress](docs/implementation-progress.md).
 
-Experimental [native Vulkan primitive backend](backends/vulkan/README.md): host-owned
-context, reusable buffers and hardware reference tests. Text/images/SVG and game
-integration remain unfinished.
+Optional [native Vulkan backend](backends/vulkan/README.md): host-owned context,
+reusable buffers, bounded image/glyph atlas, cached SVG tessellation and hardware
+reference tests. All DrawList variants are supported within documented limits.
 
 ## Build and run
 
@@ -157,6 +157,5 @@ VoxelUI source is MIT licensed. The bundled font and system dependencies retain
 separate licenses: [third-party notices](docs/third-party.md),
 [font license](examples/assets/FONT-LICENSE.txt).
 
-Experimental native backend work starts with an optional, bounded CPU geometry
-compiler for square rectangles, borders, clips and transforms. It is not yet a
-Vulkan renderer; see [coverage and reproduction](backends/vulkan/README.md).
+The optional native backend now covers all DrawList variants within bounded
+resource budgets; see [coverage and reproduction](backends/vulkan/README.md).
