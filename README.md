@@ -152,3 +152,7 @@ Reference: [architecture](docs/architecture.md), [XML](docs/xml-format.md),
 VoxelUI source is MIT licensed. The bundled font and system dependencies retain
 separate licenses: [third-party notices](docs/third-party.md),
 [font license](examples/assets/FONT-LICENSE.txt).
+
+Experimental native backend work starts with an optional, bounded CPU geometry
+compiler for square rectangles, borders, clips and transforms. It is not yet a
+Vulkan renderer; see [coverage and reproduction](backends/vulkan/README.md).
