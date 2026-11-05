@@ -1,0 +1,20 @@
+name: Native Vulkan hardware conformance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: [self-hosted, linux, vulkan]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: git rev-parse HEAD
+      - run: cmake -S . -B out/native-hardware -G Ninja -DCMAKE_BUILD_TYPE=Release -DVOXELUI_PREVIEW_SDL=OFF -DVOXELUI_VULKAN=ON
+      - run: cmake --build out/native-hardware --parallel 2
+      - run: ctest --test-dir out/native-hardware -L graphics --output-on-failure
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-vulkan-results
+          path: out/native-hardware/Testing/Temporary/LastTest.log

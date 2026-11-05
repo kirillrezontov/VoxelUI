@@ -108,8 +108,26 @@ std::expected<Mesh, GeometryError> compileGeometry(const DrawList &list, Geometr
                     if (!finite(c.bounds) || !std::isfinite(c.borderWidth) || !std::isfinite(c.radius) ||
                         c.borderWidth < 0 || c.radius < 0)
                         return "invalid rectangle parameters";
-                    if (c.radius != 0)
-                        return "rounded rectangles are not implemented";
+                    if (c.radius != 0) {
+                        const auto first = mesh.vertices.size();
+                        // Emit conservative geometry. Fragment coverage evaluates the
+                        // same local-space rounded bounds as the software reference.
+                        if (auto error = emit(c.bounds, {255,255,255,255}); !error.empty())
+                            return error;
+                        const auto t = transforms.back();
+                        const float det=t.a*t.d-t.b*t.c;
+                        if (!std::isfinite(det)) return "rounded transform determinant overflow";
+                        for (auto i=first; i<mesh.vertices.size(); ++i) {
+                            auto& v=mesh.vertices[i];
+                            v.inverseX={t.d/det,-t.c/det,(t.c*t.f-t.d*t.e)/det};
+                            v.inverseY={-t.b/det,t.a/det,(t.b*t.e-t.a*t.f)/det};
+                            for(auto value:v.inverseX) if(!std::isfinite(value)) return "rounded inverse overflow";
+                            for(auto value:v.inverseY) if(!std::isfinite(value)) return "rounded inverse overflow";
+                            v.bounds=c.bounds;v.rounding={c.radius,c.borderWidth};
+                            v.color=c.fill;v.border=c.border;
+                        }
+                        return {};
+                    }
                     auto r = c.bounds;
                     if (r.w <= 0 || r.h <= 0)
                         return {};

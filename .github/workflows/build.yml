@@ -41,3 +41,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ninja-build libxml2-dev libfreetype-dev libpng-dev
       - run: cmake --preset asan && cmake --build --preset asan --parallel 2 && ctest --preset asan
+  native-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build glslc libvulkan-dev libxml2-dev libfreetype-dev libpng-dev
+      - run: cmake -S . -B out/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DVOXELUI_PREVIEW_SDL=OFF -DVOXELUI_VULKAN=ON
+      - run: cmake --build out/native --parallel 2
+      # Hardware conformance is a separate explicitly dispatched job.
+      - run: ctest --test-dir out/native -LE graphics --output-on-failure

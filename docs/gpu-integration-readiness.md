@@ -73,8 +73,8 @@ proves host input/screen/ownership integration, not native GPU mesh/atlas readin
 Changed surfaces still rasterize/upload synchronously; GPU timestamps are not
 claimed. The next adapter needs the native caches and conformance work above.
 
-The optional [native geometry foundation](../backends/vulkan/README.md) now
-compiles square rectangles/borders and clip/transform stacks into ordered CPU
-triangles with software-reference tests. It rejects rounded rectangles, images,
-text and SVG explicitly. Vulkan recording, atlases, caches and game selection
-remain unimplemented. This does not change the public DrawList contract.
+The optional [native Vulkan backend](../backends/vulkan/README.md) now records
+square/rounded rectangles, borders and clip/transform stacks using a host device,
+pipeline and reusable fence-checked buffers. Primitive hardware readback tests
+exist. Images, text, SVG, atlases, caches and game selection remain unimplemented.
+This does not change the public DrawList contract.

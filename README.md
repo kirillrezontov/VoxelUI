@@ -8,6 +8,10 @@ A working initial engine, six examples, tools and tests are implemented. **Not e
 requirement in SPEC.md is finished.** The exact supported profile and remaining
 work are recorded below and in [implementation progress](docs/implementation-progress.md).
 
+Experimental [native Vulkan primitive backend](backends/vulkan/README.md): host-owned
+context, reusable buffers and hardware reference tests. Text/images/SVG and game
+integration remain unfinished.
+
 ## Build and run
 
 Dependencies: CMake ≥3.25, C++23 compiler, Ninja (presets), libxml2 ≥2.9,

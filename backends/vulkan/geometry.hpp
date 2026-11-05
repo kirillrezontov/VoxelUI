@@ -1,5 +1,6 @@
 #pragma once
 #include <expected>
+#include <array>
 #include <voxelui/draw_list.hpp>
 
 namespace voxelui::vulkan {
@@ -7,6 +8,10 @@ namespace voxelui::vulkan {
 struct Vertex {
     Vec2 position;
     Color color;
+    std::array<float,3> inverseX{},inverseY{};
+    Rect bounds;
+    Vec2 rounding{-1, 0}; // radius < 0: plain triangle; otherwise radius, border width
+    Color border;
 };
 struct Mesh {
     std::vector<Vertex> vertices;

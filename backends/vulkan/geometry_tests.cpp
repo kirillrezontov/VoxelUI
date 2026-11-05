@@ -111,7 +111,10 @@ int main() try {
     }
     auto rounded = rect;
     rounded.radius = 1;
-    reject({rounded}, "rounded");
+    list.commands={rounded};
+    auto roundedMesh=compileGeometry(list);
+    require(roundedMesh && !roundedMesh->vertices.empty() && roundedMesh->vertices[0].rounding.x==1,
+            "rounded fragment parameters missing");
     reject({PopClip{}}, "underflow");
     reject({PopTransform{}}, "underflow");
     reject({PushClip{{0, 0, 1, 1}}}, "unbalanced");
