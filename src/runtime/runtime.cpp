@@ -203,12 +203,14 @@ void Runtime::update(FrameInfo frame) {
         dirty_ = true;
     }
     if (dataRevision_ != data_.revision()) {
+        profiling::Scope timing(profiling::Stage::bindings);
         bindingRejected_ = false;
         if (!dirty_ && !patchBindings())
             dirty_ = true;
         dataRevision_ = data_.revision();
     }
     if (dirty_) {
+        profiling::Scope timing(profiling::Stage::rebuild);
         auto oldPayload = expandedBytes_;
         auto oldTree = tree_;
         auto oldStates = states_;
@@ -255,16 +257,24 @@ void Runtime::update(FrameInfo frame) {
         }
     }
     bool interactionChanged = !styleDirty_.empty();
-    refreshStyles();
-    if (interactionChanged) {
-        validateInteraction();
+    {
+        profiling::Scope timing(profiling::Stage::style);
         refreshStyles();
+        if (interactionChanged) {
+            validateInteraction();
+            refreshStyles();
+        }
     }
-    if (layoutDirty_)
+    if (layoutDirty_) {
+        profiling::Scope timing(profiling::Stage::layout);
         layout();
+    }
     if (!bindingRejected_)
         data_.acknowledge();
-    animate(frame.deltaSeconds);
+    {
+        profiling::Scope timing(profiling::Stage::animation);
+        animate(frame.deltaSeconds);
+    }
 }
 void Runtime::animate(float delta) {
     if (!tree_ || animations_.empty())

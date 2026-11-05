@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <voxelui/runtime.hpp>
 #include <voxelui/software.hpp>
+#include <voxelui/profiling.hpp>
 using namespace voxelui;
 namespace {
 void check(bool value, const char *message) {
@@ -93,6 +94,26 @@ int main() {
             std::cerr << "FAIL " << name << ": " << e.what() << '\n';
         }
     };
+    test("Optional profiling observes phases and restores nested sinks", [] {
+        using namespace voxelui::profiling;
+        struct Counts { int events{},draws{},layouts{}; } counts;
+        Sink observer{[](Stage stage,std::uint64_t,void* user) {
+            auto& c=*static_cast<Counts*>(user);
+            if(stage==Stage::events) ++c.events;
+            if(stage==Stage::drawList) ++c.draws;
+            if(stage==Stage::layout) ++c.layouts;
+        },&counts};
+        Runtime ui;check(ui.loadXml(screen("<Button id=\"button\">Hello</Button>")),"Profile fixture");
+        {
+            Observe watch(observer);
+            { Observe muted({});ui.buildDrawList(); }
+            check(counts.draws==0,"Nested mute failed");
+            ui.update({.viewport={800,600}});ui.buildDrawList();
+            Event event;event.type=EventType::pointerMove;ui.processEvent(event);
+        }
+        check(counts.draws==1&&counts.events==1&&counts.layouts==1,"Runtime phases not observed");
+        ui.buildDrawList();check(counts.draws==1,"Observer was not restored");
+    });
     test("XML validation and locations", [] {
         check(bool(parseDocument(screen("<Column><Text value=\"Привет\"/></Column>"))), "Valid document");
         for (auto text : {"<Screen>", "<Screen version=\"2\"/>", "<Screen version=\"1\"><Unknown/></Screen>",

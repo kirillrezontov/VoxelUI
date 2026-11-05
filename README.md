@@ -53,6 +53,38 @@ Set `VOXELUI_PREVIEW_SDL=OFF` for a core/headless build. Installed consumers use
 `find_package(VoxelUI CONFIG REQUIRED)` and targets `VoxelUI::voxelui` and
 optionally `VoxelUI::software`. Public interfaces live in `voxelui::v1`.
 
+`voxelui/profiling.hpp` provides an optional UI-thread phase observer for
+bindings, rebuild, style, layout, animation, event processing and DrawList
+generation. `profiling::Observe` restores a previous sink on scope exit. With no
+sink, the hooks do not read a clock. Callbacks must not throw. Times are inclusive:
+DrawList generation flushes pending runtime work and events may recurse. Hosts
+using an older 0.2.1 package without this additive header can still render, but
+cannot collect these internal phase timings.
+
+For a single-config Linux generator, configure and install the **same** build
+type. `--config Debug` does not select compiler flags for Ninja/Makefiles.
+Test each installed configuration with a separate prefix and consumer directory:
+
+```sh
+for config in Debug Release; do
+  cmake -S . -B "out/linux-$config" -G Ninja -DCMAKE_BUILD_TYPE="$config" -DVOXELUI_PREVIEW_SDL=OFF
+  cmake --build "out/linux-$config" --parallel 3
+  ctest --test-dir "out/linux-$config" --output-on-failure
+  cmake --install "out/linux-$config" --config "$config" --prefix "$PWD/out/stage-$config"
+  cmake -S tests/consumer -B "out/consumer-$config" -G Ninja -DCMAKE_BUILD_TYPE="$config" \
+    -DCMAKE_PREFIX_PATH="$PWD/out/stage-$config" -DVOXELUI_EXPECT_IMPORTED_CONFIG="$config"
+  cmake --build "out/consumer-$config" --parallel 3
+  ctest --test-dir "out/consumer-$config" --output-on-failure
+done
+```
+
+The consumer requires `find_package(VoxelUI 0.2.1 EXACT CONFIG REQUIRED)`,
+checks both imported targets and their configuration-specific library paths,
+then executes the public API contract. Installing an unconfigured build with
+`--config Debug` skips its `VoxelUITargets-noconfig.cmake` export; this reproduces
+the missing `IMPORTED_LOCATION` CI failure. Linux CI now tests Debug and Release
+with matched build/install/consumer configurations.
+
 For Windows, set VCPKG_ROOT to a bootstrapped vcpkg checkout and configure with
 `cmake --preset windows`, then `cmake --build build-windows`. The manifest pins
 registry baseline `d186940b2f0c4e8e5b4ff804af57d2a26fbfa091`; add
@@ -83,7 +115,7 @@ Mock data and host actions belong to the examples, not the core.
 
 ## Verification and continuation
 
-The integration executable contains **66 named test cases**, including all six
+The integration executable contains **67 named test cases**, including all six
 examples, interaction/lifecycle/security cases, and fresh-runtime comparisons of
 geometry, styles and software pixels after incremental changes at multiple scales.
 Debug, Release and ASan+UBSan checks, six byte-identical before/after example PNGs,

@@ -3,6 +3,7 @@ namespace voxelui {
 inline namespace v1 {
 using namespace runtime_detail;
 bool Runtime::processEvent(const Event &input) {
+    profiling::Scope timing(profiling::Stage::events);
     if (!tree_)
         return false;
     auto treeLifetime = tree_; // Retain event targets if a host callback loads or closes a screen.
